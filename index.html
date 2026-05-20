@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Race Review</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- App Container -->
+    <div id="app-container">
+        
+        <!-- View: Login -->
+        <div id="view-login" class="view active">
+            <div class="login-box">
+                <h1 class="app-title">RACE REVIEW</h1>
+                <p class="app-subtitle">Ultimate Analysis Platform</p>
+                <button id="auth-btn" class="primary-btn mt-4">Google Driveと連携</button>
+            </div>
+        </div>
+
+        <!-- View: Dashboard (Race List) -->
+        <div id="view-dashboard" class="view">
+            <header class="glass-header">
+                <h2>週末のレース</h2>
+                <button id="sync-btn" class="icon-btn">🔄 同期</button>
+            </header>
+            <div id="sync-status" style="display:none; padding: 10px; text-align: center; background: rgba(59, 130, 246, 0.2); font-size: 14px; font-weight: bold; color: #60a5fa;">
+                同期中...
+            </div>
+            <main class="scroll-area" id="race-list-container">
+                <!-- Race cards will be injected here -->
+                <div class="placeholder-text">データを同期してください</div>
+            </main>
+        </div>
+
+        <!-- View: Race Detail (Horse List) -->
+        <div id="view-race" class="view">
+            <header class="glass-header">
+                <button class="back-btn" onclick="navigate('dashboard')">← 戻る</button>
+                <h2 id="race-title">レース名</h2>
+            </header>
+            <main class="scroll-area" id="horse-list-container">
+                <!-- Horse cards injected here -->
+            </main>
+        </div>
+
+        <!-- View: Horse Detail (Review Form) -->
+        <div id="view-horse" class="view">
+            <header class="glass-header">
+                <button class="back-btn" onclick="navigate('race')">← 戻る</button>
+                <h2 id="horse-name-title">馬名</h2>
+                <button id="save-btn" class="primary-btn-small">保存</button>
+            </header>
+            <main class="scroll-area">
+                <!-- Tab Navigation for Past Races -->
+                <div class="tabs-container" id="past-races-tabs">
+                    <!-- Tabs injected here -->
+                </div>
+                
+                <!-- Video Player -->
+                <div class="video-container glass-panel">
+                    <video id="race-video" controls playsinline>
+                        <source src="" type="video/mp4">
+                        お使いのブラウザは動画タグをサポートしていません。
+                    </video>
+                    <div class="video-info" id="video-info-text">
+                        動画がありません
+                    </div>
+                </div>
+
+                <!-- Evaluation Form -->
+                <div class="evaluation-form glass-panel">
+                    <h3>レース回顧</h3>
+                    
+                    <div class="input-group">
+                        <label>スタート</label>
+                        <input type="text" id="eval-start" placeholder="出遅れ、好発など...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>コーナリング</label>
+                        <input type="text" id="eval-corner" placeholder="外を回された、スムーズなど...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>直線</label>
+                        <input type="text" id="eval-straight" placeholder="前が詰まった、弾けたなど...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label class="text-green">プラス評価</label>
+                        <textarea id="eval-plus" rows="2" placeholder="良かった点"></textarea>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label class="text-red">マイナス評価</label>
+                        <textarea id="eval-minus" rows="2" placeholder="懸念点"></textarea>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>総評</label>
+                        <textarea id="eval-summary" rows="3" placeholder="次走への期待度など"></textarea>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+    </div>
+
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- localForage for IndexedDB -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
