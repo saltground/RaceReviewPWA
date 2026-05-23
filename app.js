@@ -182,12 +182,15 @@ function openHorse(index) {
         horse.past_races.forEach((pr_str, i) => {
             if (i >= 5) return;
             const lines = pr_str.split('<br>');
-            const prId = lines[0];
+            const prId = lines[0] || '';
             const raceName = lines[4] || '';
-            tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${prId}')">${i+1}走前: ${raceName.substring(0,6)}...</button>`;
+            // prId が空の場合は「動画なし」として扱う
+            const safeId = prId || '動画なし';
+            tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'}...</button>`;
         });
         const first = horse.past_races[0].split('<br>');
-        selectPastRace(0, first[0], false);
+        const firstId = first[0] || '動画なし';
+        selectPastRace(0, firstId, false);
     } else {
         tabsHtml = '<div style="color:var(--text-muted);font-size:12px;">前走データなし</div>';
         showNoVideo('前走データがありません');
