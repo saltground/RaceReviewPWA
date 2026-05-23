@@ -1,269 +1,222 @@
 const CLIENT_ID = '494575771380-crkh7jitlj72jo9ruvp66s9c4g093j0d.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
-const DRIVE_FOLDER_ID = '1lrBFJbvCRPzdQqBZ-Dt1yN0W3TDhYgXM'; // 同期先ルートフォルダ
+const DRIVE_FOLDER_ID = '1lrBFJbvCRPzdQqBZ-Dt1yN0W3TDhYgXM';
 
-let tokenClient;
-let accessToken = null;
-let currentRaceData = null;
-let reviewsData = { reviews: {} }; // 回顧データ
+// ============================================================
+//  状態管理
+// ============================================================
+let tokenClient, accessToken = null;
+let currentRaceData = null, reviewsData = { reviews: {} };
+let activeRaceId = null, activeHorseIndex = null, activePastRaceIndex = null;
+let activeNbId = null; // 現在再生中の過去走ID
+let bulkDownloadStopped = false; // 一括DL停止フラグ
 
-// 現在のアクティブ状態
-let activeRaceId = null;
-let activeHorseIndex = null;
-let activePastRaceIndex = null;
+// Drive フォルダIDキャッシュ
+const driveFolderCache = {};
+let currentBlobUrl = null;
 
-// --- DOM Elements ---
-const authBtn = document.getElementById('auth-btn');
-const syncBtn = document.getElementById('sync-btn');
-const saveBtn = document.getElementById('save-btn');
-const syncStatus = document.getElementById('sync-status');
-const raceListContainer = document.getElementById('race-list-container');
-
-// --- Initialization ---
+// ============================================================
+//  初期化
+// ============================================================
 window.onload = async function () {
-    console.log("App initialized");
-
-    // GIS 初期化
     if (window.google && google.accounts) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
-            callback: (tokenResponse) => {
-                if (tokenResponse && tokenResponse.access_token) {
-                    accessToken = tokenResponse.access_token;
+            callback: (resp) => {
+                if (resp && resp.access_token) {
+                    accessToken = resp.access_token;
                     navigate('dashboard');
                     loadLocalData();
                 }
             },
         });
     }
-
-    authBtn.addEventListener('click', () => tokenClient.requestAccessToken());
-    
-    syncBtn.addEventListener('click', () => {
-        if (!accessToken) { alert("先にログインしてください"); return; }
+    document.getElementById('auth-btn').addEventListener('click', () => tokenClient.requestAccessToken());
+    document.getElementById('sync-btn').addEventListener('click', () => {
+        if (!accessToken) { alert('先にログインしてください'); return; }
         syncDataFromDrive();
     });
-
-    saveBtn.addEventListener('click', () => {
-        saveCurrentReview();
-    });
+    document.getElementById('save-btn').addEventListener('click', saveCurrentReview);
 };
 
 // ============================================================
-//  Google Drive & ローカルデータの双方向同期
+//  トースト通知
 // ============================================================
+function showToast(msg, duration = 3000) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), duration);
+}
 
+// ============================================================
+//  ナビゲーション
+// ============================================================
+function navigate(viewId) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const target = document.getElementById(`view-${viewId}`);
+    if (target) target.classList.add('active');
+    window.scrollTo(0, 0);
+    if (viewId === 'cache') renderCacheManager();
+}
+
+// ============================================================
+//  Drive同期（出馬表 & 回顧データ双方向）
+// ============================================================
 async function syncDataFromDrive() {
-    syncStatus.style.display = 'block';
-    syncStatus.textContent = '同期中...';
-
+    const status = document.getElementById('sync-status');
+    status.style.display = 'block';
+    status.textContent = '同期中...';
     try {
-        // --- 1. 出馬表データ (umazashira_data.js) のダウンロード ---
-        const queryJs = encodeURIComponent(
-            `'${DRIVE_FOLDER_ID}' in parents and name='umazashira_data.js' and trashed=false`
-        );
-        const searchJsRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=${queryJs}&fields=files(id,name)`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-        const searchJsData = await searchJsRes.json();
-
-        if (searchJsData.files && searchJsData.files.length > 0) {
-            const fileId = searchJsData.files[0].id;
-            const contentRes = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            let contentText = await contentRes.text();
-            contentText = contentText.replace(/^.*?const\s+[A-Za-z0-9_]+\s*=\s*/, '').replace(/;$/, '');
-            currentRaceData = JSON.parse(contentText);
-            await localforage.setItem('raceData', currentRaceData);
+        // 出馬表データ取得
+        const jsFile = await findDriveFile('umazashira_data.js', DRIVE_FOLDER_ID);
+        if (jsFile) {
+            const text = await fetchDriveFileContent(jsFile.id);
+            const json = JSON.parse(text.replace(/^.*?const\s+\w+\s*=\s*/, '').replace(/;$/, ''));
+            currentRaceData = json;
+            await localforage.setItem('raceData', json);
         }
 
-        // --- 2. 回顧データ (race_reviews.json) の双方向同期 ---
-        const queryJson = encodeURIComponent(
-            `'${DRIVE_FOLDER_ID}' in parents and name='race_reviews.json' and trashed=false`
-        );
-        const searchJsonRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=${queryJson}&fields=files(id,name)`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-        const searchJsonData = await searchJsonRes.json();
-
+        // 回顧データ双方向同期
+        const jsonFile = await findDriveFile('race_reviews.json', DRIVE_FOLDER_ID);
         let driveReviews = { reviews: {} };
         let driveFileId = null;
-
-        if (searchJsonData.files && searchJsonData.files.length > 0) {
-            driveFileId = searchJsonData.files[0].id;
-            const contentRes = await fetch(
-                `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } }
-            );
-            if (contentRes.ok) {
-                driveReviews = await contentRes.json();
-            }
+        if (jsonFile) {
+            driveFileId = jsonFile.id;
+            const text = await fetchDriveFileContent(driveFileId);
+            try { driveReviews = JSON.parse(text); } catch (e) {}
         }
-
-        // マージ処理 (更新日時が新しい方を優先)
-        const mergedReviews = mergeReviews(reviewsData, driveReviews);
-        reviewsData = mergedReviews;
+        reviewsData = mergeReviews(reviewsData, driveReviews);
         await localforage.setItem('reviewsData', reviewsData);
+        await uploadReviewsToDrive(driveFileId, reviewsData);
 
-        // Drive へアップロードして上書き保存
-        const uploadSuccess = await uploadReviewsToDrive(driveFileId, reviewsData);
-
-        if (uploadSuccess) {
-            syncStatus.textContent = '✅ 同期完了！';
-        } else {
-            syncStatus.textContent = '⚠️ 同期完了（アップロード失敗）';
-        }
-        
-        setTimeout(() => syncStatus.style.display = 'none', 3000);
+        status.textContent = '✅ 同期完了！';
         renderDashboard();
-
     } catch (err) {
-        console.error(err);
-        syncStatus.textContent = `❌ 同期エラー: ${err.message}`;
-        setTimeout(() => syncStatus.style.display = 'none', 5000);
+        status.textContent = `❌ エラー: ${err.message}`;
     }
+    setTimeout(() => status.style.display = 'none', 3000);
 }
 
 function mergeReviews(local, remote) {
     const merged = { reviews: { ...(remote.reviews || {}) } };
-    for (const [key, localItem] of Object.entries(local.reviews || {})) {
-        const remoteItem = merged.reviews[key];
-        if (!remoteItem || (localItem.updatedAt || 0) > (remoteItem.updatedAt || 0)) {
-            merged.reviews[key] = localItem;
-        }
+    for (const [k, v] of Object.entries(local.reviews || {})) {
+        const r = merged.reviews[k];
+        if (!r || (v.updatedAt || 0) > (r.updatedAt || 0)) merged.reviews[k] = v;
     }
     return merged;
 }
 
 async function uploadReviewsToDrive(fileId, data) {
-    const filename = 'race_reviews.json';
-    const fileMetadata = {
-        name: filename,
-        mimeType: 'application/json'
-    };
-
-    const boundary = 'foo_bar_baz';
-    const metadataPart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(fileMetadata)}\r\n`;
-    const mediaPart = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--`;
-    const body = metadataPart + mediaPart;
-
-    let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-    let method = 'POST';
-
-    if (fileId) {
-        url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`;
-        method = 'PATCH';
-    }
-
-    try {
-        const res = await fetch(url, {
-            method: method,
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': `multipart/related; boundary=${boundary}`
-            },
-            body: body
-        });
-        return res.ok;
-    } catch (e) {
-        console.error("Upload error", e);
-        return false;
-    }
+    const boundary = 'rr_boundary';
+    const meta = { name: 'race_reviews.json', mimeType: 'application/json' };
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--`;
+    const url = fileId
+        ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+        : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    await fetch(url, {
+        method: fileId ? 'PATCH' : 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body
+    });
 }
 
-// --- ローカルキャッシュ読み込み ---
+// ============================================================
+//  ローカルデータ読み込み
+// ============================================================
 async function loadLocalData() {
-    try {
-        const data = await localforage.getItem('raceData');
-        if (data) { currentRaceData = data; renderDashboard(); }
-
-        const reviews = await localforage.getItem('reviewsData');
-        if (reviews) { reviewsData = reviews; }
-    } catch (err) { console.error("Local load error", err); }
+    const data = await localforage.getItem('raceData');
+    if (data) { currentRaceData = data; renderDashboard(); }
+    const reviews = await localforage.getItem('reviewsData');
+    if (reviews) reviewsData = reviews;
 }
 
 // ============================================================
-//  UI レンダリング & 操作
+//  ダッシュボード描画
 // ============================================================
-
 function renderDashboard() {
-    if (!currentRaceData) {
-        raceListContainer.innerHTML = '<div class="placeholder-text">データを同期してください</div>';
-        return;
-    }
+    if (!currentRaceData) { document.getElementById('race-list-container').innerHTML = '<div class="placeholder-text">データを同期してください</div>'; return; }
     let html = '';
-    for (const [raceId, raceInfo] of Object.entries(currentRaceData)) {
-        html += `
-            <div class="glass-panel" style="cursor:pointer;" onclick="openRace('${raceId}')">
-                <div style="font-weight:800; font-size:16px;">${raceInfo.date} ${raceInfo.venue}${raceInfo.race_num}R</div>
-                <div style="color:var(--text-muted); font-size:14px;">${raceInfo.race_name}</div>
-                <div style="margin-top:8px; display:inline-block; background:rgba(59,130,246,0.3); color:#60a5fa; padding:2px 8px; border-radius:10px; font-size:12px;">
-                    出走 ${raceInfo.horses ? raceInfo.horses.length : 0} 頭
-                </div>
-            </div>`;
+    for (const [raceId, info] of Object.entries(currentRaceData)) {
+        html += `<div class="glass-panel" style="cursor:pointer;" onclick="openRace('${raceId}')">
+            <div style="font-weight:800;font-size:16px;">${info.date} ${info.venue}${info.race_num}R</div>
+            <div style="color:var(--text-muted);font-size:14px;">${info.race_name}</div>
+            <div style="margin-top:8px;display:inline-block;background:rgba(59,130,246,0.3);color:#60a5fa;padding:2px 8px;border-radius:10px;font-size:12px;">出走 ${info.horses ? info.horses.length : 0} 頭</div>
+        </div>`;
     }
-    raceListContainer.innerHTML = html;
+    document.getElementById('race-list-container').innerHTML = html;
 }
 
+// ============================================================
+//  レース詳細（馬一覧）
+// ============================================================
 function openRace(raceId) {
     activeRaceId = raceId;
-    const raceInfo = currentRaceData[raceId];
-    document.getElementById('race-title').textContent = `${raceInfo.venue}${raceInfo.race_num}R: ${raceInfo.race_name}`;
-
-    const horseListContainer = document.getElementById('horse-list-container');
+    const info = currentRaceData[raceId];
+    document.getElementById('race-title').textContent = `${info.venue}${info.race_num}R: ${info.race_name}`;
     let html = '';
-    if (raceInfo.horses) {
-        raceInfo.horses.forEach((horse, index) => {
-            html += `
-                <div class="glass-panel" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="openHorse(${index})">
-                    <div>
-                        <div style="font-size:12px; color:var(--text-muted);">馬番: ${horse.horse_number}</div>
-                        <div style="font-weight:bold; font-size:16px;">${horse.horse_name}</div>
-                    </div>
-                    <div style="font-size:12px; background:var(--primary-color); padding:4px 8px; border-radius:12px;">回顧する</div>
-                </div>`;
-        });
-    }
-    horseListContainer.innerHTML = html;
+    (info.horses || []).forEach((h, i) => {
+        html += `<div class="glass-panel" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="openHorse(${i})">
+            <div>
+                <div style="font-size:12px;color:var(--text-muted);">馬番: ${h.horse_number}</div>
+                <div style="font-weight:bold;font-size:16px;">${h.horse_name}</div>
+            </div>
+            <div style="font-size:12px;background:var(--primary-color);padding:4px 8px;border-radius:12px;">回顧する</div>
+        </div>`;
+    });
+    document.getElementById('horse-list-container').innerHTML = html;
     navigate('race');
 }
 
+// ============================================================
+//  馬詳細（過去走タブ）
+// ============================================================
 function openHorse(index) {
     activeHorseIndex = index;
     const horse = currentRaceData[activeRaceId].horses[index];
     document.getElementById('horse-name-title').textContent = horse.horse_name;
-
     const tabsContainer = document.getElementById('past-races-tabs');
     let tabsHtml = '';
-
     if (horse.past_races && horse.past_races.length > 0) {
         horse.past_races.forEach((pr_str, i) => {
             if (i >= 5) return;
             const lines = pr_str.split('<br>');
             const prId = lines[0];
             const raceName = lines[4] || '';
-            tabsHtml += `<button class="tab ${i===0 ? 'active' : ''}" onclick="selectPastRace(${i}, '${prId}')">${i+1}走前: ${raceName.substring(0,6)}...</button>`;
+            tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${prId}')">${i+1}走前: ${raceName.substring(0,6)}...</button>`;
         });
-        const firstPrLines = horse.past_races[0].split('<br>');
-        selectPastRace(0, firstPrLines[0], false);
+        const first = horse.past_races[0].split('<br>');
+        selectPastRace(0, first[0], false);
     } else {
-        tabsHtml = '<div style="color:var(--text-muted); font-size:12px;">前走データなし</div>';
-        showNoVideo("前走データがありません");
+        tabsHtml = '<div style="color:var(--text-muted);font-size:12px;">前走データなし</div>';
+        showNoVideo('前走データがありません');
     }
-
     tabsContainer.innerHTML = tabsHtml;
+    // キャッシュ済みタブにドット表示を非同期更新
+    updateTabCacheDots(horse);
     navigate('horse');
 }
 
-// ============================================================
-//  回顧データの読み書き
-// ============================================================
+async function updateTabCacheDots(horse) {
+    if (!horse.past_races) return;
+    for (let i = 0; i < Math.min(horse.past_races.length, 5); i++) {
+        const prId = horse.past_races[i].split('<br>')[0];
+        const cached = await localforage.getItem(`video_${prId}`);
+        const tab = document.getElementById(`tab-${i}`);
+        if (tab && cached) {
+            if (!tab.querySelector('.cached-dot')) {
+                const dot = document.createElement('span');
+                dot.className = 'cached-dot';
+                tab.appendChild(dot);
+            }
+        }
+    }
+}
 
+// ============================================================
+//  回顧データ読み書き
+// ============================================================
 function getReviewKey() {
     if (activeRaceId === null || activeHorseIndex === null || activePastRaceIndex === null) return null;
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
@@ -273,159 +226,304 @@ function getReviewKey() {
 function loadReviewToForm() {
     const key = getReviewKey();
     if (!key) return;
-
-    const review = reviewsData.reviews[key] || {};
-    document.getElementById('eval-start').value = review.start || '';
-    document.getElementById('eval-corner').value = review.corner || '';
-    document.getElementById('eval-straight').value = review.straight || '';
-    document.getElementById('eval-plus').value = review.plus || '';
-    document.getElementById('eval-minus').value = review.minus || '';
-    document.getElementById('eval-summary').value = review.summary || '';
+    const r = reviewsData.reviews[key] || {};
+    document.getElementById('eval-start').value    = r.start    || '';
+    document.getElementById('eval-corner').value   = r.corner   || '';
+    document.getElementById('eval-straight').value = r.straight || '';
+    document.getElementById('eval-plus').value     = r.plus     || '';
+    document.getElementById('eval-minus').value    = r.minus    || '';
+    document.getElementById('eval-summary').value  = r.summary  || '';
 }
 
 async function saveCurrentReview() {
     const key = getReviewKey();
     if (!key) return;
-
     reviewsData.reviews[key] = {
-        start: document.getElementById('eval-start').value,
-        corner: document.getElementById('eval-corner').value,
+        start:    document.getElementById('eval-start').value,
+        corner:   document.getElementById('eval-corner').value,
         straight: document.getElementById('eval-straight').value,
-        plus: document.getElementById('eval-plus').value,
-        minus: document.getElementById('eval-minus').value,
-        summary: document.getElementById('eval-summary').value,
+        plus:     document.getElementById('eval-plus').value,
+        minus:    document.getElementById('eval-minus').value,
+        summary:  document.getElementById('eval-summary').value,
         updatedAt: Date.now()
     };
+    await localforage.setItem('reviewsData', reviewsData);
+    showToast('✅ 回顧を保存しました');
+}
+
+// ============================================================
+//  動画再生（IndexedDBキャッシュ優先）
+// ============================================================
+async function selectPastRace(tabIndex, nbId, updateTabs = true) {
+    activePastRaceIndex = tabIndex;
+    activeNbId = nbId;
+    if (updateTabs) {
+        document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === tabIndex));
+    }
+    loadReviewToForm();
+    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
+
+    if (!nbId || nbId === '動画なし') { showNoVideo('前走動画がありません'); return; }
+
+    const filename = `${nbId}.mp4`;
+    const slot = document.getElementById('video-slot');
+    const actions = document.getElementById('video-actions');
+
+    // --- IndexedDBキャッシュを確認 ---
+    const cached = await localforage.getItem(`video_${nbId}`);
+    if (cached) {
+        currentBlobUrl = URL.createObjectURL(cached);
+        slot.innerHTML = `<video controls playsinline><source src="${currentBlobUrl}" type="video/mp4"></video>`;
+        actions.style.display = 'flex';
+        updateVideoBadge(true, cached.size);
+        document.getElementById('btn-dl-video').style.display = 'none';
+        document.getElementById('btn-del-video').style.display = '';
+        return;
+    }
+
+    // --- Driveからストリーミング ---
+    if (!accessToken) { showNoVideo('動画を再生するにはログインしてください'); return; }
+    slot.innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--text-muted);font-size:14px;">⏳ Drive から読み込み中...</div>`;
+    actions.style.display = 'none';
 
     try {
-        await localforage.setItem('reviewsData', reviewsData);
-        alert("回顧をローカルに保存しました！同期ボタンを押して Drive に反映させてください。");
-    } catch (e) {
-        console.error("Save review error", e);
-        alert("保存に失敗しました。");
+        const year = nbId.substring(0, 4);
+        const yearFolderId = await getDriveYearFolderId(year);
+        if (!yearFolderId) { showNoVideo(`⚠️ ${year}年フォルダが見つかりません`); return; }
+        const fileId = await getDriveFileId(filename, yearFolderId);
+        if (!fileId) { showNoVideo(`⚠️ 動画が未アップロード<br><small>${filename}</small>`); return; }
+
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        if (!res.ok) throw new Error(`Drive API エラー: ${res.status}`);
+
+        const blob = await res.blob();
+        currentBlobUrl = URL.createObjectURL(blob);
+        slot.innerHTML = `<video controls playsinline><source src="${currentBlobUrl}" type="video/mp4"></video>`;
+        actions.style.display = 'flex';
+        updateVideoBadge(false, blob.size);
+        document.getElementById('btn-dl-video').style.display = '';
+        document.getElementById('btn-del-video').style.display = 'none';
+
+        // 自動キャッシュ保存（オプション：コメントアウトで無効化可能）
+        // await localforage.setItem(`video_${nbId}`, blob);
+    } catch (err) {
+        showNoVideo(`❌ 読み込み失敗: ${err.message}`);
+    }
+}
+
+function showNoVideo(msg) {
+    document.getElementById('video-slot').innerHTML = `<div style="padding:40px 20px;text-align:center;color:var(--text-muted);font-size:14px;">${msg}</div>`;
+    document.getElementById('video-actions').style.display = 'none';
+}
+
+function updateVideoBadge(isCached, size) {
+    const badge = document.getElementById('video-cache-badge');
+    const mb = (size / 1024 / 1024).toFixed(1);
+    if (isCached) {
+        badge.textContent = `✅ キャッシュ済み（${mb}MB）`;
+        badge.className = 'cache-badge cached';
+    } else {
+        badge.textContent = `☁️ Drive再生（${mb}MB）`;
+        badge.className = 'cache-badge not-cached';
     }
 }
 
 // ============================================================
-//  動画再生 (Google Drive MP4 ストリーミング再生)
+//  動画個別操作（保存 / 削除 / 再取得）
 // ============================================================
-
-const driveFolderCache = {};
-let currentBlobUrl = null;
-
-function showNoVideo(message) {
-    document.querySelector('.video-container').innerHTML = `
-        <div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">${message}</div>`;
+async function downloadCurrentVideo() {
+    if (!activeNbId || !currentBlobUrl) return;
+    document.getElementById('btn-dl-video').textContent = '保存中...';
+    try {
+        const res = await fetch(currentBlobUrl);
+        const blob = await res.blob();
+        await localforage.setItem(`video_${activeNbId}`, blob);
+        showToast('✅ 動画をローカルに保存しました');
+        updateVideoBadge(true, blob.size);
+        document.getElementById('btn-dl-video').style.display = 'none';
+        document.getElementById('btn-del-video').style.display = '';
+        // タブのドットを更新
+        const tab = document.getElementById(`tab-${activePastRaceIndex}`);
+        if (tab && !tab.querySelector('.cached-dot')) {
+            const dot = document.createElement('span'); dot.className = 'cached-dot'; tab.appendChild(dot);
+        }
+    } catch (e) {
+        showToast('❌ 保存に失敗しました');
+    }
+    document.getElementById('btn-dl-video').textContent = '📥 保存';
 }
 
-function showVideoLoading() {
-    document.querySelector('.video-container').innerHTML = `
-        <div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">
-            ⏳ Drive から動画を読み込み中...
+async function deleteCurrentVideo() {
+    if (!activeNbId) return;
+    await localforage.removeItem(`video_${activeNbId}`);
+    showToast('🗑️ キャッシュを削除しました');
+    updateVideoBadge(false, 0);
+    document.getElementById('btn-dl-video').style.display = '';
+    document.getElementById('btn-del-video').style.display = 'none';
+    const tab = document.getElementById(`tab-${activePastRaceIndex}`);
+    if (tab) { const dot = tab.querySelector('.cached-dot'); if (dot) dot.remove(); }
+}
+
+async function reloadCurrentVideo() {
+    await localforage.removeItem(`video_${activeNbId}`);
+    selectPastRace(activePastRaceIndex, activeNbId, false);
+}
+
+// ============================================================
+//  一括ダウンロード
+// ============================================================
+async function startBulkDownload() {
+    if (!accessToken) { alert('先にログインしてください'); return; }
+    if (!currentRaceData || !activeRaceId) return;
+
+    const horses = currentRaceData[activeRaceId].horses || [];
+    // 全過去走IDを収集
+    const targets = [];
+    for (const h of horses) {
+        if (!h.past_races) continue;
+        for (let i = 0; i < Math.min(h.past_races.length, 5); i++) {
+            const nbId = h.past_races[i].split('<br>')[0];
+            if (nbId && nbId !== '動画なし') targets.push(nbId);
+        }
+    }
+    if (targets.length === 0) { showToast('ダウンロード対象がありません'); return; }
+
+    // 既存キャッシュを除外してカウント
+    const toDownload = [];
+    for (const nbId of targets) {
+        const cached = await localforage.getItem(`video_${nbId}`);
+        if (!cached) toDownload.push(nbId);
+    }
+
+    const totalSize = toDownload.length * 40; // 概算40MB/本
+    const confirmed = confirm(
+        `Wi-Fi環境であることを確認してください。\n\nこのレースの動画を一括ダウンロードします。\n対象: ${toDownload.length} 本（既キャッシュ ${targets.length - toDownload.length} 本をスキップ）\n推定: 約${totalSize}MB\n\n開始しますか？`
+    );
+    if (!confirmed) return;
+
+    bulkDownloadStopped = false;
+    let done = 0, skipped = 0, failed = 0;
+    const bar = document.getElementById('dl-progress-bar');
+    const fill = document.getElementById('dl-progress-fill');
+    const text = document.getElementById('dl-progress-text');
+    bar.style.display = 'block';
+
+    for (const nbId of toDownload) {
+        if (bulkDownloadStopped) break;
+        text.textContent = `ダウンロード中... ${done + skipped}/${toDownload.length}本`;
+        fill.style.width = `${Math.round(((done + skipped) / toDownload.length) * 100)}%`;
+
+        const filename = `${nbId}.mp4`;
+        const year = nbId.substring(0, 4);
+        try {
+            const yearFolderId = await getDriveYearFolderId(year);
+            if (!yearFolderId) { skipped++; continue; }
+            const fileId = await getDriveFileId(filename, yearFolderId);
+            if (!fileId) { skipped++; continue; }
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+                { headers: { 'Authorization': `Bearer ${accessToken}` } });
+            if (!res.ok) throw new Error();
+            const blob = await res.blob();
+            await localforage.setItem(`video_${nbId}`, blob);
+            done++;
+        } catch {
+            failed++;
+        }
+    }
+
+    bar.style.display = 'none';
+    fill.style.width = '0%';
+    const stopMsg = bulkDownloadStopped ? '（停止）' : '';
+    showToast(`${stopMsg}完了: ${done}本保存 / ${skipped}本スキップ / ${failed}本失敗`, 4000);
+    // タブのドット更新
+    const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
+    if (horse) updateTabCacheDots(horse);
+}
+
+function stopBulkDownload() {
+    bulkDownloadStopped = true;
+}
+
+// ============================================================
+//  キャッシュ管理画面
+// ============================================================
+async function renderCacheManager() {
+    const list = document.getElementById('cache-list');
+    const summary = document.getElementById('cache-summary');
+    list.innerHTML = '<div class="placeholder-text" style="margin-top:20px;">読み込み中...</div>';
+
+    const keys = await localforage.keys();
+    const videoKeys = keys.filter(k => k.startsWith('video_'));
+    let totalBytes = 0;
+    let html = '';
+
+    for (const key of videoKeys.sort()) {
+        const blob = await localforage.getItem(key);
+        if (!blob) continue;
+        const mb = (blob.size / 1024 / 1024).toFixed(1);
+        totalBytes += blob.size;
+        const nbId = key.replace('video_', '');
+        html += `<div class="cache-item">
+            <span class="cache-item-name">${nbId}.mp4</span>
+            <span class="cache-item-size">${mb}MB</span>
+            <button class="vact-btn danger" onclick="deleteCacheItem('${key}', this)">削除</button>
         </div>`;
+    }
+
+    const totalMb = (totalBytes / 1024 / 1024).toFixed(1);
+    summary.innerHTML = `保存動画数: <b>${videoKeys.length} 本</b><br>使用容量: <b>${totalMb} MB</b>`;
+
+    if (html) {
+        list.innerHTML = `<div class="glass-panel">${html}</div>`;
+    } else {
+        list.innerHTML = '<div class="placeholder-text" style="margin-top:20px;">保存済み動画がありません</div>';
+    }
+}
+
+async function deleteCacheItem(key, btn) {
+    await localforage.removeItem(key);
+    btn.closest('.cache-item').remove();
+    showToast('🗑️ 削除しました');
+    renderCacheManager();
+}
+
+async function clearAllCache() {
+    if (!confirm('保存済み動画を全て削除しますか？')) return;
+    const keys = await localforage.keys();
+    for (const k of keys.filter(k => k.startsWith('video_'))) {
+        await localforage.removeItem(k);
+    }
+    showToast('🗑️ 全キャッシュを削除しました');
+    renderCacheManager();
+}
+
+// ============================================================
+//  Drive APIヘルパー
+// ============================================================
+async function findDriveFile(name, folderId) {
+    const q = encodeURIComponent(`name='${name}' and '${folderId}' in parents and trashed=false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    const data = await res.json();
+    return (data.files && data.files.length > 0) ? data.files[0] : null;
+}
+
+async function fetchDriveFileContent(fileId) {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    return await res.text();
 }
 
 async function getDriveYearFolderId(year) {
     if (driveFolderCache[year]) return driveFolderCache[year];
-
-    const query = encodeURIComponent(
-        `name='${year}' and '${DRIVE_FOLDER_ID}' in parents and ` +
-        `mimeType='application/vnd.google-apps.folder' and trashed=false`
-    );
-    const res  = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
-    const data = await res.json();
-    if (data.files && data.files.length > 0) {
-        driveFolderCache[year] = data.files[0].id;
-        return data.files[0].id;
-    }
+    const f = await findDriveFile(year, DRIVE_FOLDER_ID);
+    // フォルダかどうかはmimeTypeで厳密にはチェックしないが実用上問題なし
+    if (f) { driveFolderCache[year] = f.id; return f.id; }
     return null;
 }
 
 async function getDriveFileId(filename, yearFolderId) {
-    const query = encodeURIComponent(
-        `name='${filename}' and '${yearFolderId}' in parents and trashed=false`
-    );
-    const res  = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
-    const data = await res.json();
-    return (data.files && data.files.length > 0) ? data.files[0].id : null;
-}
-
-async function selectPastRace(tabIndex, nbId, updateTabs = true) {
-    activePastRaceIndex = tabIndex;
-
-    if (updateTabs) {
-        document.querySelectorAll('.tab').forEach((tab, i) => {
-            tab.classList.toggle('active', i === tabIndex);
-        });
-    }
-
-    // フォームに保存済みの回顧データを表示
-    loadReviewToForm();
-
-    // 前の動画のblobURLを解放
-    if (currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl);
-        currentBlobUrl = null;
-    }
-
-    if (!nbId || nbId === "動画なし") {
-        showNoVideo("前走動画がありません");
-        return;
-    }
-    if (!accessToken) {
-        showNoVideo("動画を再生するにはログインしてください");
-        return;
-    }
-
-    const filename = `${nbId}.mp4`;
-    const year     = nbId.substring(0, 4);
-
-    showVideoLoading();
-
-    try {
-        const yearFolderId = await getDriveYearFolderId(year);
-        if (!yearFolderId) {
-            showNoVideo(`⚠️ ${year}年フォルダがDriveに見つかりません`);
-            return;
-        }
-
-        const fileId = await getDriveFileId(filename, yearFolderId);
-        if (!fileId) {
-            showNoVideo(`⚠️ 動画がまだアップロードされていません<br><small>${filename}</small>`);
-            return;
-        }
-
-        const videoRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-        if (!videoRes.ok) throw new Error(`Drive API エラー: ${videoRes.status}`);
-
-        const blob      = await videoRes.blob();
-        currentBlobUrl  = URL.createObjectURL(blob);
-
-        document.querySelector('.video-container').innerHTML = `
-            <video id="race-video" controls playsinline style="width:100%; border-radius:8px;">
-                <source src="${currentBlobUrl}" type="video/mp4">
-            </video>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:4px; text-align:right;">
-                📁 ${filename}
-            </div>`;
-
-    } catch (err) {
-        console.error(err);
-        showNoVideo(`❌ 動画の読み込みに失敗しました<br><small>${err.message}</small>`);
-    }
-}
-
-// --- Navigation ---
-function navigate(viewId) {
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    const target = document.getElementById(`view-${viewId}`);
-    if (target) target.classList.add('active');
-    window.scrollTo(0, 0);
+    const f = await findDriveFile(filename, yearFolderId);
+    return f ? f.id : null;
 }

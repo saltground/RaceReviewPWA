@@ -4,14 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Race Review</title>
-    <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- App Container -->
     <div id="app-container">
-        
+
+        <!-- グローバル進捗バー（一括DL中に画面上部固定表示） -->
+        <div id="dl-progress-bar" style="display:none;">
+            <div id="dl-progress-inner">
+                <span id="dl-progress-text">ダウンロード中... 0/0本</span>
+                <div id="dl-progress-track"><div id="dl-progress-fill"></div></div>
+                <button id="dl-stop-btn" onclick="stopBulkDownload()">停止</button>
+            </div>
+        </div>
+
+        <!-- グローバル トースト通知 -->
+        <div id="toast" class="toast"></div>
+
         <!-- View: Login -->
         <div id="view-login" class="view active">
             <div class="login-box">
@@ -25,13 +35,13 @@
         <div id="view-dashboard" class="view">
             <header class="glass-header">
                 <h2>週末のレース</h2>
-                <button id="sync-btn" class="icon-btn">🔄 同期</button>
+                <div class="header-actions">
+                    <button id="sync-btn" class="icon-btn">🔄</button>
+                    <button id="cache-mgr-btn" class="icon-btn" onclick="navigate('cache')">📦</button>
+                </div>
             </header>
-            <div id="sync-status" style="display:none; padding: 10px; text-align: center; background: rgba(59, 130, 246, 0.2); font-size: 14px; font-weight: bold; color: #60a5fa;">
-                同期中...
-            </div>
+            <div id="sync-status" class="sync-status-bar" style="display:none;">同期中...</div>
             <main class="scroll-area" id="race-list-container">
-                <!-- Race cards will be injected here -->
                 <div class="placeholder-text">データを同期してください</div>
             </main>
         </div>
@@ -41,10 +51,9 @@
             <header class="glass-header">
                 <button class="back-btn" onclick="navigate('dashboard')">← 戻る</button>
                 <h2 id="race-title">レース名</h2>
+                <button id="bulk-dl-btn" class="icon-btn" onclick="startBulkDownload()" title="一括ダウンロード">📥</button>
             </header>
-            <main class="scroll-area" id="horse-list-container">
-                <!-- Horse cards injected here -->
-            </main>
+            <main class="scroll-area" id="horse-list-container"></main>
         </div>
 
         <!-- View: Horse Detail (Review Form) -->
@@ -55,51 +64,45 @@
                 <button id="save-btn" class="primary-btn-small">保存</button>
             </header>
             <main class="scroll-area">
-                <!-- Tab Navigation for Past Races -->
-                <div class="tabs-container" id="past-races-tabs">
-                    <!-- Tabs injected here -->
-                </div>
-                
+                <div class="tabs-container" id="past-races-tabs"></div>
+
                 <!-- Video Player -->
                 <div class="video-container glass-panel">
-                    <video id="race-video" controls playsinline>
-                        <source src="" type="video/mp4">
-                        お使いのブラウザは動画タグをサポートしていません。
-                    </video>
-                    <div class="video-info" id="video-info-text">
-                        動画がありません
+                    <div id="video-slot">
+                        <div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">動画がありません</div>
+                    </div>
+                    <!-- 動画操作ボタン -->
+                    <div id="video-actions" class="video-actions" style="display:none;">
+                        <span id="video-cache-badge" class="cache-badge"></span>
+                        <button id="btn-dl-video" class="vact-btn" onclick="downloadCurrentVideo()">📥 保存</button>
+                        <button id="btn-del-video" class="vact-btn danger" onclick="deleteCurrentVideo()">🗑️ 削除</button>
+                        <button id="btn-refresh-video" class="vact-btn" onclick="reloadCurrentVideo()">☁️ 再取得</button>
                     </div>
                 </div>
 
                 <!-- Evaluation Form -->
                 <div class="evaluation-form glass-panel">
                     <h3>レース回顧</h3>
-                    
                     <div class="input-group">
                         <label>スタート</label>
                         <input type="text" id="eval-start" placeholder="出遅れ、好発など...">
                     </div>
-                    
                     <div class="input-group">
                         <label>コーナリング</label>
                         <input type="text" id="eval-corner" placeholder="外を回された、スムーズなど...">
                     </div>
-                    
                     <div class="input-group">
                         <label>直線</label>
                         <input type="text" id="eval-straight" placeholder="前が詰まった、弾けたなど...">
                     </div>
-                    
                     <div class="input-group">
                         <label class="text-green">プラス評価</label>
                         <textarea id="eval-plus" rows="2" placeholder="良かった点"></textarea>
                     </div>
-                    
                     <div class="input-group">
                         <label class="text-red">マイナス評価</label>
                         <textarea id="eval-minus" rows="2" placeholder="懸念点"></textarea>
                     </div>
-                    
                     <div class="input-group">
                         <label>総評</label>
                         <textarea id="eval-summary" rows="3" placeholder="次走への期待度など"></textarea>
@@ -108,11 +111,24 @@
             </main>
         </div>
 
+        <!-- View: Cache Manager -->
+        <div id="view-cache" class="view">
+            <header class="glass-header">
+                <button class="back-btn" onclick="navigate('dashboard')">← 戻る</button>
+                <h2>キャッシュ管理</h2>
+                <button class="vact-btn danger" onclick="clearAllCache()">全削除</button>
+            </header>
+            <main class="scroll-area">
+                <div id="cache-summary" class="glass-panel" style="margin-bottom:15px; font-size:14px; line-height:2;">
+                    読み込み中...
+                </div>
+                <div id="cache-list"></div>
+            </main>
+        </div>
+
     </div>
 
-    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <!-- localForage for IndexedDB -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="app.js"></script>
 </body>
