@@ -176,6 +176,12 @@ function openHorse(index) {
     activeHorseIndex = index;
     const horse = currentRaceData[activeRaceId].horses[index];
     document.getElementById('horse-name-title').textContent = horse.horse_name;
+    
+    // 枠番・馬番を表示
+    const waku = horse.post_position || '－';
+    const umaban = horse.horse_number || '－';
+    document.getElementById('horse-meta-info').textContent = `${waku}枠${umaban}番`;
+
     const tabsContainer = document.getElementById('past-races-tabs');
     let tabsHtml = '';
     if (horse.past_races && horse.past_races.length > 0) {

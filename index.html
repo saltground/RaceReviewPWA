@@ -60,10 +60,15 @@
         <div id="view-horse" class="view">
             <header class="glass-header">
                 <button class="back-btn" onclick="navigate('race')">← 戻る</button>
-                <h2 id="horse-name-title">馬名</h2>
+                <div class="header-title-container">
+                    <h2 id="horse-name-title">馬名</h2>
+                    <div id="horse-meta-info" class="horse-meta-info">－枠－番</div>
+                </div>
                 <button id="save-btn" class="primary-btn-small">保存</button>
             </header>
-            <main class="scroll-area">
+            
+            <!-- 固定メディアエリア（非スクロール） -->
+            <div class="fixed-media-area">
                 <div class="tabs-container" id="past-races-tabs"></div>
 
                 <!-- Video Player -->
@@ -79,7 +84,10 @@
                         <button id="btn-refresh-video" class="vact-btn" onclick="reloadCurrentVideo()">☁️ 再取得</button>
                     </div>
                 </div>
+            </div>
 
+            <!-- スクロール可能な評価フォームエリア -->
+            <main class="scroll-area form-scroll-area">
                 <!-- Evaluation Form -->
                 <div class="evaluation-form glass-panel">
                     <h3>レース回顧</h3>
