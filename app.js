@@ -176,11 +176,8 @@ function openHorse(index) {
     activeHorseIndex = index;
     const horse = currentRaceData[activeRaceId].horses[index];
     document.getElementById('horse-name-title').textContent = horse.horse_name;
-    
-    // 枠番・馬番を表示（今走分。タブ切替時に上書きされる）
-    const waku = horse.post_position || '－';
-    const umaban = horse.horse_number || '－';
-    document.getElementById('horse-meta-info').textContent = `${waku}枠${umaban}番（今走）`;
+    // 枠番情報は初期化（タブ選択時に更新される）
+    document.getElementById('horse-meta-info').textContent = '';
 
     const tabsContainer = document.getElementById('past-races-tabs');
     let tabsHtml = '';
@@ -190,20 +187,20 @@ function openHorse(index) {
             const lines = pr_str.split('<br>');
             const prId = lines[0] || '';
             const raceName = lines[4] || '';
-            // prId が空の場合は「動画なし」として扱う
             const safeId = prId || '動画なし';
             tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'}...</button>`;
         });
+        // タブHTMLをDOMに反映してから最初のタブを選択する
+        tabsContainer.innerHTML = tabsHtml;
+        updateTabCacheDots(horse);
         const first = horse.past_races[0].split('<br>');
         const firstId = first[0] || '動画なし';
         selectPastRace(0, firstId, false);
     } else {
         tabsHtml = '<div style="color:var(--text-muted);font-size:12px;">前走データなし</div>';
+        tabsContainer.innerHTML = tabsHtml;
         showNoVideo('前走データがありません');
     }
-    tabsContainer.innerHTML = tabsHtml;
-    // キャッシュ済みタブにドット表示を非同期更新
-    updateTabCacheDots(horse);
     navigate('horse');
 }
 
@@ -271,23 +268,22 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     }
     loadReviewToForm();
 
-    // 回顧対象レースでの枠番・馬番を抽出してヘッダーに表示
+    // 選択タブのレースにおける枠番・馬番を lines[6] から抽出して表示
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
+    const metaEl = document.getElementById('horse-meta-info');
     if (horse && horse.past_races && horse.past_races[tabIndex]) {
         const prLines = horse.past_races[tabIndex].split('<br>');
-        // lines[6] 例: "16頭 8枠 1番 横山典弘 56.0"
+        // Data4 に "16頭 8枠 1番 騎手名 斤量" の形式で含まれる
         const horseInfoText = prLines[6] || '';
         const mWaku = horseInfoText.match(/(\d+)枠/);
         const mBan  = horseInfoText.match(/枠\s*(\d+)番/);
         if (mWaku && mBan) {
-            document.getElementById('horse-meta-info').textContent =
-                `${mWaku[1]}枠${mBan[1]}番（${tabIndex + 1}走前）`;
+            metaEl.textContent = `${mWaku[1]}枠 ${mBan[1]}番`;
         } else {
-            // 枠番情報が取れない場合は今走の枠番・馬番に戻す
-            const waku = horse.post_position || '－';
-            const umaban = horse.horse_number || '－';
-            document.getElementById('horse-meta-info').textContent = `${waku}枠${umaban}番（今走）`;
+            metaEl.textContent = '';
         }
+    } else {
+        metaEl.textContent = '';
     }
 
     if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
