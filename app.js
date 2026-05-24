@@ -177,10 +177,10 @@ function openHorse(index) {
     const horse = currentRaceData[activeRaceId].horses[index];
     document.getElementById('horse-name-title').textContent = horse.horse_name;
     
-    // 枠番・馬番を表示
+    // 枠番・馬番を表示（今走分。タブ切替時に上書きされる）
     const waku = horse.post_position || '－';
     const umaban = horse.horse_number || '－';
-    document.getElementById('horse-meta-info').textContent = `${waku}枠${umaban}番`;
+    document.getElementById('horse-meta-info').textContent = `${waku}枠${umaban}番（今走）`;
 
     const tabsContainer = document.getElementById('past-races-tabs');
     let tabsHtml = '';
@@ -270,6 +270,26 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
         document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === tabIndex));
     }
     loadReviewToForm();
+
+    // 回顧対象レースでの枠番・馬番を抽出してヘッダーに表示
+    const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
+    if (horse && horse.past_races && horse.past_races[tabIndex]) {
+        const prLines = horse.past_races[tabIndex].split('<br>');
+        // lines[6] 例: "16頭 8枠 1番 横山典弘 56.0"
+        const horseInfoText = prLines[6] || '';
+        const mWaku = horseInfoText.match(/(\d+)枠/);
+        const mBan  = horseInfoText.match(/枠\s*(\d+)番/);
+        if (mWaku && mBan) {
+            document.getElementById('horse-meta-info').textContent =
+                `${mWaku[1]}枠${mBan[1]}番（${tabIndex + 1}走前）`;
+        } else {
+            // 枠番情報が取れない場合は今走の枠番・馬番に戻す
+            const waku = horse.post_position || '－';
+            const umaban = horse.horse_number || '－';
+            document.getElementById('horse-meta-info').textContent = `${waku}枠${umaban}番（今走）`;
+        }
+    }
+
     if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
 
     if (!nbId || nbId === '動画なし') { showNoVideo('前走動画がありません'); return; }
