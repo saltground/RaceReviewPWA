@@ -453,3 +453,341 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 .text-green { color: var(--success-color) !important; }
 .text-red   { color: var(--danger-color) !important; }
 .mt-4       { margin-top: 1rem; }
+
+/* ============================================================
+   ボトムナビゲーションバー
+   ============================================================ */
+.bottom-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--glass-border);
+    display: flex;
+    z-index: 100;
+}
+/* ボトムナビが表示されているときはスクロールエリアに余白を追加 */
+.view.active .scroll-area,
+.view.active .form-scroll-area {
+    padding-bottom: 80px;
+}
+.bnav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+.bnav-btn.active {
+    color: var(--primary-color);
+}
+.bnav-icon { font-size: 20px; }
+.bnav-label { font-size: 10px; font-weight: 600; }
+
+/* ============================================================
+   バイアスビュー専用スタイル
+   ============================================================ */
+
+/* 内部タブ */
+.bias-subview-tabs {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(15,23,42,0.8);
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+.bias-subview-tabs::-webkit-scrollbar { height: 0; }
+.bias-tab {
+    padding: 6px 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+.bias-tab.active {
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    color: white;
+    border-color: transparent;
+}
+
+/* 会場・日付セレクター */
+.bias-selectors {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(15,23,42,0.5);
+    flex-shrink: 0;
+}
+.bias-selectors select,
+.bias-selectors input[type="date"] {
+    flex: 1;
+    background: rgba(30,41,59,0.8);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    -webkit-appearance: none;
+}
+
+/* バイアスフィルター行 */
+.bias-filter-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.bias-filter-row select {
+    flex: 1;
+    min-width: 80px;
+    background: rgba(30,41,59,0.8);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    -webkit-appearance: none;
+}
+
+/* サブビューの切り替え */
+.bias-subview { display: none; }
+.bias-subview.active { display: block; }
+
+/* セクションタイトル */
+.bias-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text-color);
+}
+
+/* ============================================================
+   馬場状態カード（クッション値・含水率）
+   ============================================================ */
+.track-gauge-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.track-gauge-item {
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+}
+.track-gauge-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.track-gauge-value {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+}
+.track-gauge-unit {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.track-bias-label {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 8px;
+}
+.bias-inner { background: rgba(59,130,246,0.25); color: #60a5fa; }
+.bias-outer { background: rgba(139,92,246,0.25); color: #a78bfa; }
+.bias-neutral { background: rgba(100,116,139,0.25); color: var(--text-muted); }
+.bias-front { background: rgba(16,185,129,0.25); color: #34d399; }
+.bias-closer { background: rgba(245,158,11,0.25); color: #fbbf24; }
+
+/* ============================================================
+   天気タイムライン
+   ============================================================ */
+.weather-timeline {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 6px;
+    margin: 8px 0;
+}
+.weather-timeline::-webkit-scrollbar { height: 3px; }
+.weather-card {
+    flex-shrink: 0;
+    background: rgba(0,0,0,0.25);
+    border-radius: 10px;
+    padding: 8px 10px;
+    text-align: center;
+    min-width: 56px;
+}
+.weather-time { font-size: 10px; color: var(--text-muted); }
+.weather-icon { font-size: 18px; margin: 2px 0; }
+.weather-wind { font-size: 10px; color: #60a5fa; }
+.weather-precip { font-size: 10px; color: #93c5fd; }
+.wind-bias-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 10px;
+}
+.wind-badge-head { background: rgba(16,185,129,0.2); color: #34d399; }   /* 向かい風→前有利 */
+.wind-badge-tail { background: rgba(245,158,11,0.2); color: #fbbf24; }   /* 追い風→差し有利 */
+.wind-badge-side { background: rgba(100,116,139,0.2); color: var(--text-muted); }
+.wind-badge-calm { background: rgba(100,116,139,0.1); color: var(--text-muted); }
+
+/* ============================================================
+   枠番ヒートマップ
+   ============================================================ */
+.frame-heatmap {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    margin-top: 8px;
+}
+.frame-cell {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+}
+.frame-num { font-size: 9px; color: rgba(255,255,255,0.6); }
+.frame-rate { font-size: 12px; }
+
+/* 枠色（JRA公式） */
+.frame-1 { border: 2px solid #f8f8f8; }
+.frame-2 { border: 2px solid #111111; color: #eee; }
+.frame-3 { border: 2px solid #e74c3c; }
+.frame-4 { border: 2px solid #3498db; }
+.frame-5 { border: 2px solid #f1c40f; }
+.frame-6 { border: 2px solid #27ae60; }
+.frame-7 { border: 2px solid #f39c12; }
+.frame-8 { border: 2px solid #e74c3c; background: rgba(100,116,139,0.2); }
+
+/* ============================================================
+   勝ち時計テーブル
+   ============================================================ */
+.wt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.wt-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--glass-border);
+}
+.wt-table td {
+    padding: 8px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.wt-table tr:last-child td { border-bottom: none; }
+.wt-fast { color: #34d399; font-weight: 700; }
+.wt-slow { color: #fbbf24; font-weight: 700; }
+
+/* ============================================================
+   総合バイアスゲージ（5段階）
+   ============================================================ */
+.bias-gauge-container {
+    margin: 16px 0;
+}
+.bias-gauge-track {
+    position: relative;
+    height: 12px;
+    background: linear-gradient(90deg,
+        #3b82f6 0%,    /* 内有利 */
+        #10b981 30%,   /* やや内 */
+        #64748b 50%,   /* 中立 */
+        #f59e0b 70%,   /* やや外 */
+        #8b5cf6 100%   /* 外有利 */
+    );
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.bias-gauge-needle {
+    position: absolute;
+    top: -4px;
+    width: 4px;
+    height: 20px;
+    background: white;
+    border-radius: 2px;
+    transform: translateX(-50%);
+    transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 0 8px rgba(255,255,255,0.6);
+}
+.bias-gauge-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.bias-summary-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+.bias-chip {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--glass-border);
+}
+.bias-chip.positive { border-color: rgba(59,130,246,0.4); color: #60a5fa; }
+.bias-chip.negative { border-color: rgba(139,92,246,0.4); color: #a78bfa; }
+.bias-chip.neutral  { color: var(--text-muted); }
+
+/* ============================================================
+   当日入力グリッド
+   ============================================================ */
+.today-input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+/* 手動バッジ */
+.badge-manual {
+    display: inline-block;
+    background: rgba(245,158,11,0.2);
+    color: #fbbf24;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 700;
+    vertical-align: middle;
+    margin-left: 4px;
+}

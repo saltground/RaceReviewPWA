@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Race Review</title>
+    <title>Race Review & Bias</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -134,10 +134,168 @@
             </main>
         </div>
 
+        <!-- View: Track Bias -->
+        <div id="view-bias" class="view">
+            <header class="glass-header">
+                <h2>🏇 トラックバイアス</h2>
+                <button class="icon-btn" id="bias-reload-btn" onclick="reloadBiasData()" title="データ再読み込み">🔄</button>
+            </header>
+
+            <!-- バイアス内部タブ -->
+            <div class="bias-subview-tabs" id="bias-tabs">
+                <button class="bias-tab active" id="btab-summary" onclick="switchBiasTab('summary')">📊 サマリー</button>
+                <button class="bias-tab" id="btab-wintime" onclick="switchBiasTab('wintime')">⏱ 勝ち時計</button>
+                <button class="bias-tab" id="btab-trend" onclick="switchBiasTab('trend')">📈 推移</button>
+                <button class="bias-tab" id="btab-today" onclick="switchBiasTab('today')">🌤 当日想定</button>
+            </div>
+
+            <!-- 選択フォーム（サマリー・推移共通） -->
+            <div class="bias-selectors" id="bias-selector-area">
+                <select id="bias-venue-select" onchange="onBiasSelectorChange()">
+                    <option value="">会場を選択</option>
+                    <option value="東京">東京</option>
+                    <option value="中山">中山</option>
+                    <option value="阪神">阪神</option>
+                    <option value="京都">京都</option>
+                    <option value="中京">中京</option>
+                    <option value="新潟">新潟</option>
+                    <option value="福島">福島</option>
+                    <option value="小倉">小倉</option>
+                    <option value="札幌">札幌</option>
+                    <option value="函館">函館</option>
+                </select>
+                <input type="date" id="bias-date-select" onchange="onBiasSelectorChange()">
+            </div>
+
+            <main class="scroll-area" id="bias-content-area">
+                <!-- サブビュー: サマリー -->
+                <div id="bias-subview-summary" class="bias-subview active">
+                    <div id="bias-cushion-section" class="glass-panel">
+                        <h3 class="bias-section-title">🎯 馬場状態</h3>
+                        <div id="bias-cushion-content" class="placeholder-text">会場と日付を選択してください</div>
+                    </div>
+                    <div id="bias-weather-section" class="glass-panel">
+                        <h3 class="bias-section-title">🌤 天気・風（当日）</h3>
+                        <div id="bias-weather-content" class="placeholder-text">会場を選択してください</div>
+                    </div>
+                    <div id="bias-frame-section" class="glass-panel">
+                        <h3 class="bias-section-title">🔢 枠番別連対率</h3>
+                        <div id="bias-frame-content" class="placeholder-text">会場を選択してください</div>
+                    </div>
+                </div>
+
+                <!-- サブビュー: 勝ち時計比較 -->
+                <div id="bias-subview-wintime" class="bias-subview">
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">⏱ 過去5年 平均勝ち時計</h3>
+                        <div class="bias-filter-row">
+                            <select id="wt-venue" onchange="renderWinningTime()">
+                                <option value="">会場</option>
+                                <option value="東京">東京</option><option value="中山">中山</option>
+                                <option value="阪神">阪神</option><option value="京都">京都</option>
+                                <option value="中京">中京</option><option value="新潟">新潟</option>
+                                <option value="福島">福島</option><option value="小倉">小倉</option>
+                                <option value="札幌">札幌</option><option value="函館">函館</option>
+                            </select>
+                            <select id="wt-surface" onchange="renderWinningTime()">
+                                <option value="">芝/ダート</option>
+                                <option value="芝">芝</option>
+                                <option value="ダート">ダート</option>
+                            </select>
+                            <select id="wt-condition" onchange="renderWinningTime()">
+                                <option value="">馬場状態</option>
+                                <option value="良">良</option>
+                                <option value="稍重">稍重</option>
+                                <option value="重">重</option>
+                                <option value="不良">不良</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="wt-result-area"><div class="placeholder-text">条件を選択してください</div></div>
+                </div>
+
+                <!-- サブビュー: 時系列推移 -->
+                <div id="bias-subview-trend" class="bias-subview">
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">📈 クッション値・含水率 推移</h3>
+                        <div id="bias-trend-content" class="placeholder-text">会場と日付を選択してください</div>
+                        <canvas id="bias-trend-canvas" style="display:none; max-width:100%; margin-top:12px;"></canvas>
+                    </div>
+                </div>
+
+                <!-- サブビュー: 当日想定（Phase 3） -->
+                <div id="bias-subview-today" class="bias-subview">
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">🌤 当日天気（自動取得）</h3>
+                        <div class="bias-filter-row">
+                            <select id="today-venue" onchange="fetchTodayWeather()">
+                                <option value="">会場を選択</option>
+                                <option value="東京">東京</option><option value="中山">中山</option>
+                                <option value="阪神">阪神</option><option value="京都">京都</option>
+                                <option value="中京">中京</option><option value="新潟">新潟</option>
+                                <option value="福島">福島</option><option value="小倉">小倉</option>
+                                <option value="札幌">札幌</option><option value="函館">函館</option>
+                            </select>
+                        </div>
+                        <div id="today-weather-content" class="placeholder-text" style="margin-top:10px;">会場を選択してください</div>
+                    </div>
+                    <!-- クッション値・含水率手動入力（Phase 3.5 自動化予定） -->
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">📋 馬場数値入力 <span class="badge-manual">手動</span></h3>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">JRA公式発表のクッション値・含水率を入力（Phase 3.5 で自動化予定）</p>
+                        <div class="today-input-grid">
+                            <div class="input-group">
+                                <label>クッション値（芝）</label>
+                                <input type="number" id="input-cushion" step="0.1" placeholder="例: 9.2" oninput="calcTodayBias()">
+                            </div>
+                            <div class="input-group">
+                                <label>含水率 芝(%)</label>
+                                <input type="number" id="input-moisture-turf" step="0.1" placeholder="例: 12.3" oninput="calcTodayBias()">
+                            </div>
+                            <div class="input-group">
+                                <label>含水率 ダート(%)</label>
+                                <input type="number" id="input-moisture-dirt" step="0.1" placeholder="例: 8.5" oninput="calcTodayBias()">
+                            </div>
+                            <div class="input-group">
+                                <label>午前勝ち時計補正(秒)</label>
+                                <input type="number" id="input-time-diff" step="0.1" placeholder="例: -0.5（速い）" oninput="calcTodayBias()">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 総合バイアス判定 -->
+                    <div class="glass-panel" id="today-bias-result">
+                        <h3 class="bias-section-title">🎯 総合バイアス判定</h3>
+                        <div id="today-bias-gauge-area" class="placeholder-text">入力完了後に表示されます</div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- ボトムナビゲーションバー -->
+        <nav class="bottom-nav" id="bottom-nav">
+            <button class="bnav-btn active" id="bnav-race" onclick="switchMainView('race')">
+                <span class="bnav-icon">📋</span>
+                <span class="bnav-label">レース</span>
+            </button>
+            <button class="bnav-btn" id="bnav-bias" onclick="switchMainView('bias')">
+                <span class="bnav-icon">🏇</span>
+                <span class="bnav-label">バイアス</span>
+            </button>
+        </nav>
     </div>
 
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <!-- トラックバイアスデータ（notebooks/track_bias_stats.py --generate-js で生成） -->
+    <script>
+        // track_bias_data.js が未生成の場合の空データ初期化
+        if (typeof TRACK_BIAS_DATA === 'undefined') {
+            window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
+        }
+    </script>
+    <script src="track_bias_data.js" onerror="console.warn('track_bias_data.js 未生成。notebooks/track_bias_stats.py --generate-js を実行してください')"></script>
     <script src="app.js"></script>
+    <script src="bias_logic.js"></script>
 </body>
 </html>
+
