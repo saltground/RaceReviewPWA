@@ -286,14 +286,10 @@
 
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <!-- トラックバイアスデータ（notebooks/track_bias_stats.py --generate-js で生成） -->
+    <!-- トラックバイアスデータは app.js の syncDataFromDrive にて Google Drive からフェッチする -->
     <script>
-        // track_bias_data.js が未生成の場合の空データ初期化
-        if (typeof TRACK_BIAS_DATA === 'undefined') {
-            window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
-        }
+        window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
     </script>
-    <script src="track_bias_data.js" onerror="console.warn('track_bias_data.js 未生成。notebooks/track_bias_stats.py --generate-js を実行してください')"></script>
     <script src="app.js"></script>
     <script src="bias_logic.js"></script>
 </body>

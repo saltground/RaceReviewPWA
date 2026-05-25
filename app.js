@@ -1,4 +1,4 @@
-const CLIENT_ID = '494575771380-crkh7jitlj72jo9ruvp66s9c4g093j0d.apps.googleusercontent.com';
+const CLIENT_ID = '257777008-bmie829mev13mncesvmn3ovf4khcp5q5.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
 const DRIVE_FOLDER_ID = '1lrBFJbvCRPzdQqBZ-Dt1yN0W3TDhYgXM';
 
@@ -91,6 +91,16 @@ async function syncDataFromDrive() {
         await localforage.setItem('reviewsData', reviewsData);
         await uploadReviewsToDrive(driveFileId, reviewsData);
 
+        // トラックバイアスデータ同期
+        const biasFile = await findDriveFile('track_bias_data.json');
+        if (biasFile) {
+            const text = await fetchDriveFileContent(biasFile.id);
+            try {
+                window.TRACK_BIAS_DATA = JSON.parse(text);
+                await localforage.setItem('trackBiasData', window.TRACK_BIAS_DATA);
+            } catch (e) { console.error('bias json parse error', e); }
+        }
+
         status.textContent = '✅ 同期完了！';
         renderDashboard();
     } catch (err) {
@@ -130,6 +140,8 @@ async function loadLocalData() {
     if (data) { currentRaceData = data; renderDashboard(); }
     const reviews = await localforage.getItem('reviewsData');
     if (reviews) reviewsData = reviews;
+    const bias = await localforage.getItem('trackBiasData');
+    if (bias) window.TRACK_BIAS_DATA = bias;
 }
 
 // ============================================================
@@ -527,7 +539,9 @@ async function clearAllCache() {
 //  Drive APIヘルパー
 // ============================================================
 async function findDriveFile(name, folderId) {
-    const q = encodeURIComponent(`name='${name}' and '${folderId}' in parents and trashed=false`);
+    let qStr = `name='${name}' and trashed=false`;
+    if (folderId) qStr += ` and '${folderId}' in parents`;
+    const q = encodeURIComponent(qStr);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
         { headers: { 'Authorization': `Bearer ${accessToken}` } });
     const data = await res.json();

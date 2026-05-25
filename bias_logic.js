@@ -560,16 +560,13 @@ function calcTodayBias() {
 // ============================================================
 //  バイアスデータ再読み込み
 // ============================================================
-function reloadBiasData() {
-    showToast('🔄 データを再読み込み中...');
-    const newScript = document.createElement('script');
-    newScript.src = 'track_bias_data.js?t=' + Date.now();
-    newScript.onload = function() {
+async function reloadBiasData() {
+    if (typeof syncDataFromDrive === 'function' && typeof accessToken !== 'undefined' && accessToken) {
+        showToast('🔄 Google Driveから最新のバイアスデータを取得中...');
+        await syncDataFromDrive();
         showToast('✅ バイアスデータを更新しました');
         onBiasSelectorChange();
-    };
-    newScript.onerror = function() {
-        showToast('⚠️ track_bias_data.js が見つかりません');
-    };
-    document.head.appendChild(newScript);
+    } else {
+        showToast('⚠️ 先にログインして同期を行ってください');
+    }
 }
