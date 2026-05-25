@@ -356,6 +356,21 @@ const VENUE_COORDS = {
 
 let todayWeatherCache = {};
 
+const OPEN_METEO_WEATHER_CODES = {
+    0: '晴れ',
+    1: '晴れ', 2: '曇り', 3: '曇り',
+    45: '霧', 48: '霧',
+    51: '小雨', 53: '小雨', 55: '小雨',
+    56: 'みぞれ', 57: 'みぞれ',
+    61: '雨', 63: '雨', 65: '強い雨',
+    66: 'みぞれ', 67: '強いみぞれ',
+    71: '雪', 73: '雪', 75: '強い雪',
+    77: '雪',
+    80: 'にわか雨', 81: 'にわか雨', 82: '激しいにわか雨',
+    85: 'にわか雪', 86: '激しいにわか雪',
+    95: '雷雨', 96: '雷雨', 99: '雷雨'
+};
+
 async function fetchTodayWeather() {
     const venue = document.getElementById('today-venue').value;
     const el = document.getElementById('today-weather-content');
@@ -368,44 +383,49 @@ async function fetchTodayWeather() {
     const coords = VENUE_COORDS[venue];
     if (!coords) { el.innerHTML = '<div class="placeholder-text" style="margin:0;">会場座標未登録</div>'; return; }
 
-    const apiKey = window.OWM_API_KEY || '';
-    if (!apiKey) {
-        el.innerHTML =
-            '<div style="font-size:12px;color:var(--text-muted);">' +
-            '⚠️ OpenWeatherMap APIキー未設定。<br>' +
-            'ブラウザコンソールで以下を実行してください：<br>' +
-            '<code style="font-size:11px;color:#94a3b8;">window.OWM_API_KEY = \'あなたのキー\';</code><br>' +
-            '<a href="https://openweathermap.org" target="_blank" style="color:#60a5fa;">APIキーを取得する →</a>' +
-            '</div>';
-        return;
-    }
-
     try {
-        const url = 'https://api.openweathermap.org/data/3.0/onecall' +
-            '?lat=' + coords.lat + '&lon=' + coords.lon +
-            '&appid=' + apiKey + '&exclude=current,daily,minutely,alerts&units=metric&lang=ja';
+        const url = 'https://api.open-meteo.com/v1/forecast' +
+            '?latitude=' + coords.lat + '&longitude=' + coords.lon +
+            '&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia/Tokyo';
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
 
-        let records = (data.hourly || []).map(function(h) {
-            const dt = new Date(h.dt * 1000);
-            const hh = dt.getHours();
-            const rain = (h.rain && h.rain['1h']) ? h.rain['1h'] : 0;
-            const snow = (h.snow && h.snow['1h']) ? h.snow['1h'] : 0;
-            return {
-                time: (hh < 10 ? '0' + hh : '' + hh) + ':00',
-                weather: (h.weather && h.weather[0]) ? h.weather[0].description : '',
-                wind_dir: (h.wind_deg != null ? h.wind_deg : '—') + '°',
-                wind_speed: h.wind_speed,
-                wind_bias: judgeWindBias(h.wind_deg, coords.straight),
-                precipitation: rain + snow,
-                temperature: h.temp,
-            };
-        }).filter(function(r) {
-            const h = parseInt(r.time);
-            return h >= 9 && h <= 20;
-        });
+        const hourly = data.hourly || {};
+        const times = hourly.time || [];
+        const temps = hourly.temperature_2m || [];
+        const precips = hourly.precipitation || [];
+        const windSpeeds = hourly.wind_speed_10m || [];
+        const windDirs = hourly.wind_direction_10m || [];
+        const codes = hourly.weather_code || [];
+
+        let records = [];
+        for (let i = 0; i < times.length; i++) {
+            const dtStr = times[i];
+            const hh = parseInt(dtStr.split('T')[1].split(':')[0]);
+            
+            // 9時から20時までのレース時間帯に絞る
+            if (hh >= 9 && hh <= 20) {
+                const temp = temps[i] != null ? temps[i] : null;
+                const precip = precips[i] != null ? precips[i] : 0;
+                const windSpeedKmh = windSpeeds[i] != null ? windSpeeds[i] : 0;
+                // km/h から m/s に変換 (1 m/s = 3.6 km/h)
+                const windSpeedMs = Math.round((windSpeedKmh / 3.6) * 10) / 10;
+                const windDeg = windDirs[i] != null ? windDirs[i] : null;
+                const code = codes[i] != null ? codes[i] : 0;
+                const weatherDesc = OPEN_METEO_WEATHER_CODES[code] || '不明';
+
+                records.push({
+                    time: (hh < 10 ? '0' + hh : '' + hh) + ':00',
+                    weather: weatherDesc,
+                    wind_dir: (windDeg != null ? windDeg : '—') + '°',
+                    wind_speed: windSpeedMs,
+                    wind_bias: judgeWindBias(windDeg, coords.straight),
+                    precipitation: precip,
+                    temperature: temp,
+                });
+            }
+        }
 
         todayWeatherCache[cacheKey] = records;
         renderTodayWeather(venue, records);
