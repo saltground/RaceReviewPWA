@@ -228,7 +228,7 @@
                     <div class="glass-panel">
                         <h3 class="bias-section-title">🌤 当日天気（自動取得）</h3>
                         <div class="bias-filter-row">
-                            <select id="today-venue" onchange="fetchTodayWeather()">
+                            <select id="today-venue" onchange="fetchTodayWeather(); autoFillTodayTrackData(this.value)">
                                 <option value="">会場を選択</option>
                                 <option value="東京">東京</option><option value="中山">中山</option>
                                 <option value="阪神">阪神</option><option value="京都">京都</option>
@@ -239,10 +239,12 @@
                         </div>
                         <div id="today-weather-content" class="placeholder-text" style="margin-top:10px;">会場を選択してください</div>
                     </div>
-                    <!-- クッション値・含水率手動入力（Phase 3.5 自動化予定） -->
+                    <!-- クッション値・含水率手動入力（Phase 3.5 自動化済み） -->
                     <div class="glass-panel">
-                        <h3 class="bias-section-title">📋 馬場数値入力 <span class="badge-manual">手動</span></h3>
-                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">JRA公式発表のクッション値・含水率を入力（Phase 3.5 で自動化予定）</p>
+                        <h3 class="bias-section-title">📋 馬場数値入力 <span class="badge-manual" id="track-input-badge">手動</span></h3>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">JRA公式発表のクッション値・含水率（Drive同期後は自動入力）</p>
+                        <!-- Phase 3.5: 馬場整備情報チップ表示エリア -->
+                        <div id="today-maintenance-info" style="display:none; margin-bottom:12px;"></div>
                         <div class="today-input-grid">
                             <div class="input-group">
                                 <label>クッション値（芝）</label>

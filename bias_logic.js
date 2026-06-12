@@ -555,6 +555,22 @@ function calcTodayBias() {
             '</div>' +
         '</div>' +
         '<div class="bias-summary-chips">' + chipsHtml + '</div>';
+
+    // Phase 3.5: 馬場整備フラグがある場合は追加チップを付記
+    const today35 = new Date().toISOString().slice(0, 10);
+    const todayTrack35 = ((window.TRACK_BIAS_DATA || {}).today_track || {})[today35] || {};
+    const trackData35 = todayTrack35[venue];
+    if (trackData35) {
+        const flags35 = trackData35.flags || {};
+        const extraChips = [];
+        if (flags35.course_change) extraChips.push('<div class="bias-chip maintenance-flag">🔄 コース替わり</div>');
+        if (flags35.aeration)      extraChips.push('<div class="bias-chip maintenance-flag">⚠️ エアレーション</div>');
+        if (flags35.watering)      extraChips.push('<div class="bias-chip maintenance-flag">💧 散水あり</div>');
+        if (extraChips.length) {
+            const chipsDiv = el.querySelector('.bias-summary-chips');
+            if (chipsDiv) chipsDiv.innerHTML += extraChips.join('');
+        }
+    }
 }
 
 // ============================================================
@@ -570,3 +586,97 @@ async function reloadBiasData() {
         showToast('⚠️ 先にログインして同期を行ってください');
     }
 }
+
+// ============================================================
+//  Phase 3.5: 当日馬場データの自動入力
+// ============================================================
+
+/**
+ * today_track データが存在する場合、当日想定タブの入力フォームに自動セットする。
+ * 会場選択が変わるたびに呼ばれる（fetchTodayWeather の冒頭でも呼び出す）。
+ */
+function autoFillTodayTrackData(venue) {
+    if (!venue) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const todayTrack = ((window.TRACK_BIAS_DATA || {}).today_track || {})[today] || {};
+    const data = todayTrack[venue];
+
+    const badge = document.getElementById('track-input-badge');
+
+    if (!data) {
+        // データなし → 手動入力モードのまま
+        if (badge) { badge.textContent = '手動'; badge.className = 'badge-manual'; }
+        const infoEl = document.getElementById('today-maintenance-info');
+        if (infoEl) infoEl.style.display = 'none';
+        return;
+    }
+
+    // ---- 数値の自動セット ----
+    const cushionEl      = document.getElementById('input-cushion');
+    const moistTurfEl    = document.getElementById('input-moisture-turf');
+    const moistDirtEl    = document.getElementById('input-moisture-dirt');
+
+    if (cushionEl && data.cushion != null)        cushionEl.value      = data.cushion;
+    if (moistTurfEl && data.moisture_turf != null) moistTurfEl.value   = data.moisture_turf;
+    if (moistDirtEl && data.moisture_dirt != null) moistDirtEl.value   = data.moisture_dirt;
+
+    // ---- バッジを「自動」に切り替え ----
+    if (badge) { badge.textContent = '自動'; badge.className = 'badge-auto'; }
+
+    // ---- 馬場整備情報チップを表示 ----
+    showMaintenanceInfo(data, venue);
+
+    // ---- バイアス判定を再計算 ----
+    calcTodayBias();
+}
+
+/**
+ * 馬場整備情報（コース替わり・エアレーション・散水・馬場状態）を表示する。
+ */
+function showMaintenanceInfo(data, venue) {
+    const infoEl = document.getElementById('today-maintenance-info');
+    if (!infoEl) return;
+
+    const flags = data.flags || {};
+    const chips = [];
+
+    // 馬場状態
+    if (data.track_condition_turf && data.track_condition_turf !== '不明') {
+        const condMap = { '良': '✅ 芝:良', '稍重': '⚠️ 芝:稍重', '重': '🚨 芝:重', '不良': '🚨 芝:不良' };
+        chips.push({ label: condMap[data.track_condition_turf] || ('芝:' + data.track_condition_turf), cls: data.track_condition_turf === '良' ? 'neutral' : 'negative' });
+    }
+    if (data.track_condition_dirt && data.track_condition_dirt !== '不明') {
+        const condMap = { '良': '✅ ダ:良', '稍重': '⚠️ ダ:稍重', '重': '🚨 ダ:重', '不良': '🚨 ダ:不良' };
+        chips.push({ label: condMap[data.track_condition_dirt] || ('ダ:' + data.track_condition_dirt), cls: data.track_condition_dirt === '良' ? 'neutral' : 'negative' });
+    }
+
+    // 整備フラグ
+    if (flags.course_change) {
+        chips.push({ label: '🔄 コース替わり → 内有利傾向', cls: 'maintenance-flag course-change' });
+    }
+    if (flags.aeration) {
+        chips.push({ label: '⚠️ エアレーション実施 → 時計かかる', cls: 'maintenance-flag aeration' });
+    }
+    if (flags.watering) {
+        chips.push({ label: '💧 散水あり → 含水率上昇', cls: 'maintenance-flag watering' });
+    }
+
+    // 測定時刻
+    const measuredInfo = data.cushion_measured_at
+        ? '<div class="measured-at">📅 測定時刻: ' + data.cushion_measured_at + ' / 含水率: ' + (data.moist_measured_at || '不明') + '</div>'
+        : '';
+
+    if (!chips.length && !measuredInfo) {
+        infoEl.style.display = 'none';
+        return;
+    }
+
+    infoEl.style.display = 'block';
+    const chipsHtml = chips.map(function(c) {
+        return '<div class="maintenance-chip ' + c.cls + '">' + c.label + '</div>';
+    }).join('');
+
+    infoEl.innerHTML = '<div class="maintenance-chips">' + chipsHtml + '</div>' + measuredInfo;
+}
+
+

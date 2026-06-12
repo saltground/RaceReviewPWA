@@ -791,3 +791,85 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
     vertical-align: middle;
     margin-left: 4px;
 }
+
+/* Phase 3.5: 自動取得バッジ */
+.badge-auto {
+    display: inline-block;
+    background: linear-gradient(135deg, rgba(16,185,129,0.25), rgba(5,150,105,0.2));
+    color: #34d399;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    vertical-align: middle;
+    margin-left: 4px;
+    border: 1px solid rgba(52,211,153,0.3);
+}
+
+/* Phase 3.5: 馬場整備情報チップコンテナ */
+.maintenance-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+/* Phase 3.5: 馬場整備情報チップ */
+.maintenance-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.maintenance-chip.neutral {
+    background: rgba(100,116,139,0.2);
+    color: #94a3b8;
+    border: 1px solid rgba(100,116,139,0.3);
+}
+
+.maintenance-chip.negative {
+    background: rgba(251,146,60,0.15);
+    color: #fb923c;
+    border: 1px solid rgba(251,146,60,0.3);
+}
+
+.maintenance-chip.maintenance-flag.course-change {
+    background: rgba(59,130,246,0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59,130,246,0.3);
+}
+
+.maintenance-chip.maintenance-flag.aeration {
+    background: rgba(251,191,36,0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251,191,36,0.3);
+}
+
+.maintenance-chip.maintenance-flag.watering {
+    background: rgba(34,211,238,0.15);
+    color: #22d3ee;
+    border: 1px solid rgba(34,211,238,0.3);
+}
+
+/* bias-chip の整備フラグ用スタイル */
+.bias-chip.maintenance-flag {
+    background: rgba(100,116,139,0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(100,116,139,0.3);
+}
+
+/* Phase 3.5: 測定時刻表示 */
+.measured-at {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    border-left: 2px solid rgba(52,211,153,0.4);
+}
+
