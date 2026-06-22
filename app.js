@@ -236,9 +236,11 @@ async function updateTabCacheDots(horse) {
 //  回顧データ読み書き
 // ============================================================
 function getReviewKey() {
-    if (activeRaceId === null || activeHorseIndex === null || activePastRaceIndex === null) return null;
+    if (activeHorseIndex === null || !activeNbId || activeNbId === '動画なし') return null;
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
-    return `${activeRaceId}_${horse.horse_name}_${activePastRaceIndex}`;
+    // キー = 「回顧対象の過去走レースID」+「馬名」
+    // → 週をまたいでも同じ過去走を参照すれば同じキーになり、回顧が引き継がれる
+    return `${activeNbId}_${horse.horse_name}`;
 }
 
 function loadReviewToForm() {

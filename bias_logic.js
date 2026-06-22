@@ -33,6 +33,12 @@ function switchBiasTab(tabId) {
     selectorArea.style.display = (tabId === 'summary' || tabId === 'trend') ? 'flex' : 'none';
     if (tabId === 'wintime') renderWinningTime();
     if (tabId === 'summary' || tabId === 'trend') onBiasSelectorChange();
+    if (tabId === 'today') {
+        const venueEl = document.getElementById('today-venue');
+        if (venueEl && venueEl.value) {
+            autoFillTodayTrackData(venueEl.value);
+        }
+    }
 }
 
 function onBiasSelectorChange() {
@@ -597,8 +603,16 @@ async function reloadBiasData() {
  */
 function autoFillTodayTrackData(venue) {
     if (!venue) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const todayTrack = ((window.TRACK_BIAS_DATA || {}).today_track || {})[today] || {};
+    let today = new Date().toISOString().slice(0, 10);
+    const todayTrackDict = (window.TRACK_BIAS_DATA || {}).today_track || {};
+    
+    // 今日のデータが無ければ、JSON内の最新の日付をフォールバックとして使用する（動作確認用）
+    if (!todayTrackDict[today] && Object.keys(todayTrackDict).length > 0) {
+        const availableDates = Object.keys(todayTrackDict).sort().reverse();
+        today = availableDates[0];
+    }
+    
+    const todayTrack = todayTrackDict[today] || {};
     const data = todayTrack[venue];
 
     const badge = document.getElementById('track-input-badge');
