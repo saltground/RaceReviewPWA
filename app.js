@@ -277,22 +277,22 @@ async function saveCurrentReview() {
 async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     activePastRaceIndex = tabIndex;
     activeNbId = nbId;
-    if (updateTabs) {
+        if (updateTabs) {
         document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === tabIndex));
     }
     loadReviewToForm();
 
-    // 選択タブのレースにおける枠番・馬番を lines[6] から抽出して表示
+    // 選択タブの過去走における馬番を lines[5](Data03) から抽出して表示
+    // Data03 実フォーマット: "N頭 M番 人 騎手名 斤量" ← 枠番なし、馬番のみ
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
     const metaEl = document.getElementById('horse-meta-info');
     if (horse && horse.past_races && horse.past_races[tabIndex]) {
         const prLines = horse.past_races[tabIndex].split('<br>');
-        // Data4 に "16頭 8枠 1番 騎手名 斤量" の形式で含まれる
-        const horseInfoText = prLines[6] || '';
-        const mWaku = horseInfoText.match(/(\d+)枠/);
-        const mBan  = horseInfoText.match(/枠\s*(\d+)番/);
-        if (mWaku && mBan) {
-            metaEl.textContent = `${mWaku[1]}枠 ${mBan[1]}番`;
+        const horseInfoText = prLines[5] || '';
+        // U+756A = 「番」→ 「N番」のNを馬番として取得
+        const mBan = horseInfoText.match(/(\d+)\u756a/);
+        if (mBan) {
+            metaEl.textContent = `${mBan[1]}番`;
         } else {
             metaEl.textContent = '';
         }
