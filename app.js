@@ -277,7 +277,7 @@ async function saveCurrentReview() {
 async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     activePastRaceIndex = tabIndex;
     activeNbId = nbId;
-        if (updateTabs) {
+    if (updateTabs) {
         document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === tabIndex));
     }
     loadReviewToForm();
@@ -290,7 +290,7 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
         const prLines = horse.past_races[tabIndex].split('<br>');
         const horseInfoText = prLines[5] || '';
         // U+756A = 「番」→ 「N番」のNを馬番として取得
-        const mBan = horseInfoText.match(/(\d+)\u756a/);
+        const mBan = horseInfoText.match(/(\d+)番/);
         if (mBan) {
             metaEl.textContent = `${mBan[1]}番`;
         } else {
