@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Race Review & Bias</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app-container">
+
+        <!-- グローバル進捗バー（一括DL中に画面上部固定表示） -->
+        <div id="dl-progress-bar" style="display:none;">
+            <div id="dl-progress-inner">
+                <span id="dl-progress-text">ダウンロード中... 0/0本</span>
+                <div id="dl-progress-track"><div id="dl-progress-fill"></div></div>
+                <button id="dl-stop-btn" onclick="stopBulkDownload()">停止</button>
+            </div>
+        </div>
+
+        <!-- グローバル トースト通知 -->
+        <div id="toast" class="toast"></div>
+
+        <!-- View: Login -->
+        <div id="view-login" class="view active">
+            <div class="login-box">
+                <h1 class="app-title">RACE REVIEW</h1>
+                <p class="app-subtitle">Ultimate Analysis Platform</p>
+                <button id="auth-btn" class="primary-btn mt-4">Google Driveと連携</button>
+            </div>
+        </div>
+
+        <!-- View: Dashboard (Race List) -->
+        <div id="view-dashboard" class="view">
+            <header class="glass-header">
+                <h2>週末のレース</h2>
+                <div class="header-actions">
+                    <button id="sync-btn" class="icon-btn">🔄</button>
+                    <button id="cache-mgr-btn" class="icon-btn" onclick="navigate('cache')">📦</button>
+                </div>
+            </header>
+            <div id="sync-status" class="sync-status-bar" style="display:none;">同期中...</div>
+            <main class="scroll-area" id="race-list-container">
+                <div class="placeholder-text">データを同期してください</div>
+            </main>
+        </div>
+
+        <!-- View: Race Detail (Horse List) -->
+        <div id="view-race" class="view">
+            <header class="glass-header">
+                <button class="back-btn" onclick="navigate('dashboard')">← 戻る</button>
+                <h2 id="race-title">レース名</h2>
+                <button id="bulk-dl-btn" class="icon-btn" onclick="startBulkDownload()" title="一括ダウンロード">📥</button>
+            </header>
+            <main class="scroll-area" id="horse-list-container"></main>
+        </div>
+
+        <!-- View: Horse Detail (Review Form) -->
+        <div id="view-horse" class="view">
+            <header class="glass-header">
+                <button class="back-btn" onclick="navigate('race')">← 戻る</button>
+                <div class="header-title-container">
+                    <h2 id="horse-name-title">馬名</h2>
+                    <div id="horse-meta-info" class="horse-meta-info">－枠－番</div>
+                </div>
+                <button id="save-btn" class="primary-btn-small">保存</button>
+            </header>
+            
+            <!-- 固定メディアエリア（非スクロール） -->
+            <div class="fixed-media-area">
+                <div class="tabs-container" id="past-races-tabs"></div>
+
+                <!-- Video Player -->
+                <div class="video-container glass-panel">
+                    <div id="video-slot">
+                        <div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">動画がありません</div>
+                    </div>
+                    <!-- 動画操作ボタン -->
+                    <div id="video-actions" class="video-actions" style="display:none;">
+                        <span id="video-cache-badge" class="cache-badge"></span>
+                        <button id="btn-dl-video" class="vact-btn" onclick="downloadCurrentVideo()">📥 保存</button>
+                        <button id="btn-del-video" class="vact-btn danger" onclick="deleteCurrentVideo()">🗑️ 削除</button>
+                        <button id="btn-refresh-video" class="vact-btn" onclick="reloadCurrentVideo()">☁️ 再取得</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- スクロール可能な評価フォームエリア -->
+            <main class="scroll-area form-scroll-area">
+                <!-- Evaluation Form -->
+                <div class="evaluation-form glass-panel">
+                    <h3>レース回顧</h3>
+                    <div class="input-group">
+                        <label>スタート</label>
+                        <input type="text" id="eval-start" placeholder="出遅れ、好発など...">
+                    </div>
+                    <div class="input-group">
+                        <label>コーナリング</label>
+                        <input type="text" id="eval-corner" placeholder="外を回された、スムーズなど...">
+                    </div>
+                    <div class="input-group">
+                        <label>直線</label>
+                        <input type="text" id="eval-straight" placeholder="前が詰まった、弾けたなど...">
+                    </div>
+                    <div class="input-group">
+                        <label class="text-green">プラス評価</label>
+                        <textarea id="eval-plus" rows="2" placeholder="良かった点"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label class="text-red">マイナス評価</label>
+                        <textarea id="eval-minus" rows="2" placeholder="懸念点"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>総評</label>
+                        <textarea id="eval-summary" rows="3" placeholder="次走への期待度など"></textarea>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- View: Cache Manager -->
+        <div id="view-cache" class="view">
+            <header class="glass-header">
+                <button class="back-btn" onclick="navigate('dashboard')">← 戻る</button>
+                <h2>キャッシュ管理</h2>
+                <button class="vact-btn danger" onclick="clearAllCache()">全削除</button>
+            </header>
+            <main class="scroll-area">
+                <div id="cache-summary" class="glass-panel" style="margin-bottom:15px; font-size:14px; line-height:2;">
+                    読み込み中...
+                </div>
+                <div id="cache-list"></div>
+            </main>
+        </div>
+
+        <!-- View: Track Bias -->
+        <div id="view-bias" class="view">
+            <header class="glass-header">
+                <h2>🏇 トラックバイアス</h2>
+                <button class="icon-btn" id="bias-reload-btn" onclick="reloadBiasData()" title="データ再読み込み">🔄</button>
+            </header>
+
+            <!-- バイアス内部タブ -->
+            <div class="bias-subview-tabs" id="bias-tabs">
+                <button class="bias-tab active" id="btab-summary" onclick="switchBiasTab('summary')">📊 サマリー</button>
+                <button class="bias-tab" id="btab-wintime" onclick="switchBiasTab('wintime')">⏱ 勝ち時計</button>
+                <button class="bias-tab" id="btab-trend" onclick="switchBiasTab('trend')">📈 推移</button>
+                <button class="bias-tab" id="btab-today" onclick="switchBiasTab('today')">🌤 当日想定</button>
+            </div>
+
+            <!-- 選択フォーム（サマリー・推移共通） -->
+            <div class="bias-selectors" id="bias-selector-area">
+                <select id="bias-venue-select" onchange="onBiasSelectorChange()">
+                    <option value="">会場を選択</option>
+                    <option value="東京">東京</option>
+                    <option value="中山">中山</option>
+                    <option value="阪神">阪神</option>
+                    <option value="京都">京都</option>
+                    <option value="中京">中京</option>
+                    <option value="新潟">新潟</option>
+                    <option value="福島">福島</option>
+                    <option value="小倉">小倉</option>
+                    <option value="札幌">札幌</option>
+                    <option value="函館">函館</option>
+                </select>
+                <input type="date" id="bias-date-select" onchange="onBiasSelectorChange()">
+            </div>
+
+            <main class="scroll-area" id="bias-content-area">
+                <!-- サブビュー: サマリー -->
+                <div id="bias-subview-summary" class="bias-subview active">
+                    <div id="bias-cushion-section" class="glass-panel">
+                        <h3 class="bias-section-title">🎯 馬場状態</h3>
+                        <div id="bias-cushion-content" class="placeholder-text">会場と日付を選択してください</div>
+                    </div>
+                    <div id="bias-weather-section" class="glass-panel">
+                        <h3 class="bias-section-title">🌤 天気・風（当日）</h3>
+                        <div id="bias-weather-content" class="placeholder-text">会場を選択してください</div>
+                    </div>
+                    <div id="bias-frame-section" class="glass-panel">
+                        <h3 class="bias-section-title">🔢 枠番別連対率</h3>
+                        <div id="bias-frame-content" class="placeholder-text">会場を選択してください</div>
+                    </div>
+                </div>
+
+                <!-- サブビュー: 勝ち時計比較 -->
+                <div id="bias-subview-wintime" class="bias-subview">
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">⏱ 過去10年 平均勝ち時計</h3>
+                        <div class="bias-filter-row">
+                            <select id="wt-venue" onchange="renderWinningTime()">
+                                <option value="">会場</option>
+                                <option value="東京">東京</option><option value="中山">中山</option>
+                                <option value="阪神">阪神</option><option value="京都">京都</option>
+                                <option value="中京">中京</option><option value="新潟">新潟</option>
+                                <option value="福島">福島</option><option value="小倉">小倉</option>
+                                <option value="札幌">札幌</option><option value="函館">函館</option>
+                            </select>
+                            <select id="wt-surface" onchange="renderWinningTime()">
+                                <option value="">コース(すべて)</option>
+                                <option value="芝">芝</option>
+                                <option value="ダート">ダート</option>
+                                <option value="障害">障害</option>
+                            </select>
+                            <select id="wt-class" onchange="renderWinningTime()">
+                                <option value="">クラス(すべて)</option>
+                                <option value="新馬・未勝利">新馬・未勝利</option>
+                                <option value="1勝クラス">1勝クラス</option>
+                                <option value="2勝クラス">2勝クラス</option>
+                                <option value="3勝クラス">3勝クラス</option>
+                                <option value="OPクラス">OPクラス</option>
+                            </select>
+                            <select id="wt-condition" onchange="renderWinningTime()">
+                                <option value="">馬場状態</option>
+                                <option value="良">良</option>
+                                <option value="稍重">稍重</option>
+                                <option value="重">重</option>
+                                <option value="不良">不良</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="wt-result-area"><div class="placeholder-text">条件を選択してください</div></div>
+                </div>
+
+                <!-- サブビュー: 時系列推移 -->
+                <div id="bias-subview-trend" class="bias-subview">
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">📈 クッション値・含水率 推移</h3>
+                        <div id="bias-trend-content" class="placeholder-text">会場と日付を選択してください</div>
+                        <canvas id="bias-trend-canvas" style="display:none; max-width:100%; margin-top:12px;"></canvas>
+                    </div>
+                </div>
+
+                <!-- サブビュー: 当日想定（Phase 3） -->
+                <div id="bias-subview-today" class="bias-subview">
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">🌤 当日天気（自動取得）</h3>
+                        <div class="bias-filter-row">
+                            <select id="today-venue" onchange="fetchTodayWeather(); autoFillTodayTrackData(this.value)">
+                                <option value="">会場を選択</option>
+                                <option value="東京">東京</option><option value="中山">中山</option>
+                                <option value="阪神">阪神</option><option value="京都">京都</option>
+                                <option value="中京">中京</option><option value="新潟">新潟</option>
+                                <option value="福島">福島</option><option value="小倉">小倉</option>
+                                <option value="札幌">札幌</option><option value="函館">函館</option>
+                            </select>
+                        </div>
+                        <div id="today-weather-content" class="placeholder-text" style="margin-top:10px;">会場を選択してください</div>
+                    </div>
+                    <!-- クッション値・含水率手動入力（Phase 3.5 自動化済み） -->
+                    <div class="glass-panel">
+                        <h3 class="bias-section-title">📋 馬場数値入力 <span class="badge-manual" id="track-input-badge">手動</span></h3>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">JRA公式発表のクッション値・含水率（Drive同期後は自動入力）</p>
+                        <!-- Phase 3.5: 馬場整備情報チップ表示エリア -->
+                        <div id="today-maintenance-info" style="display:none; margin-bottom:12px;"></div>
+                        <div class="today-input-grid">
+                            <div class="input-group">
+                                <label>クッション値（芝）</label>
+                                <input type="number" id="input-cushion" step="0.1" placeholder="例: 9.2" oninput="calcTodayBias()">
+                            </div>
+                            <div class="input-group">
+                                <label>含水率 芝(%)</label>
+                                <input type="number" id="input-moisture-turf" step="0.1" placeholder="例: 12.3" oninput="calcTodayBias()">
+                            </div>
+                            <div class="input-group">
+                                <label>含水率 ダート(%)</label>
+                                <input type="number" id="input-moisture-dirt" step="0.1" placeholder="例: 8.5" oninput="calcTodayBias()">
+                            </div>
+                            <div class="input-group">
+                                <label>午前勝ち時計補正(秒)</label>
+                                <input type="number" id="input-time-diff" step="0.1" placeholder="例: -0.5（速い）" oninput="calcTodayBias()">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 総合バイアス判定 -->
+                    <div class="glass-panel" id="today-bias-result">
+                        <h3 class="bias-section-title">🎯 総合バイアス判定</h3>
+                        <div id="today-bias-gauge-area" class="placeholder-text">入力完了後に表示されます</div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- ボトムナビゲーションバー -->
+        <nav class="bottom-nav" id="bottom-nav">
+            <button class="bnav-btn active" id="bnav-race" onclick="switchMainView('race')">
+                <span class="bnav-icon">📋</span>
+                <span class="bnav-label">レース</span>
+            </button>
+            <button class="bnav-btn" id="bnav-bias" onclick="switchMainView('bias')">
+                <span class="bnav-icon">🏇</span>
+                <span class="bnav-label">バイアス</span>
+            </button>
+        </nav>
+    </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <!-- トラックバイアスデータは app.js の syncDataFromDrive にて Google Drive からフェッチする -->
+    <script>
+        window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
+    </script>
+    <script src="app.js"></script>
+    <script src="bias_logic.js"></script>
+</body>
+</html>
+
