@@ -147,12 +147,32 @@ async function loadLocalData() {
 // ============================================================
 //  ダッシュボード描画
 // ============================================================
+function getPaceBadgeForRace(raceId, info) {
+    let paceIndex = info ? info.pace_index : null;
+    let f3f_l3f = info ? info.pace_f3f_l3f : null;
+    if ((!paceIndex || paceIndex === 'Unknown') && window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
+        const pObj = window.TRACK_BIAS_DATA.race_paces[raceId];
+        if (pObj) {
+            paceIndex = pObj.pace;
+            f3f_l3f = pObj.f3f_l3f;
+        }
+    }
+    if (typeof getPaceBadgeHtml === 'function') {
+        return getPaceBadgeHtml(paceIndex, f3f_l3f);
+    }
+    return '';
+}
+
 function renderDashboard() {
     if (!currentRaceData) { document.getElementById('race-list-container').innerHTML = '<div class="placeholder-text">データを同期してください</div>'; return; }
     let html = '';
     for (const [raceId, info] of Object.entries(currentRaceData)) {
+        const paceBadge = getPaceBadgeForRace(raceId, info);
         html += `<div class="glass-panel" style="cursor:pointer;" onclick="openRace('${raceId}')">
-            <div style="font-weight:800;font-size:16px;">${info.date} ${info.venue}${info.race_num}R</div>
+            <div style="font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:space-between;">
+                <span>${info.date} ${info.venue}${info.race_num}R</span>
+                ${paceBadge}
+            </div>
             <div style="color:var(--text-muted);font-size:14px;">${info.race_name}</div>
             <div style="margin-top:8px;display:inline-block;background:rgba(59,130,246,0.3);color:#60a5fa;padding:2px 8px;border-radius:10px;font-size:12px;">出走 ${info.horses ? info.horses.length : 0} 頭</div>
         </div>`;
@@ -166,7 +186,8 @@ function renderDashboard() {
 function openRace(raceId) {
     activeRaceId = raceId;
     const info = currentRaceData[raceId];
-    document.getElementById('race-title').textContent = `${info.venue}${info.race_num}R: ${info.race_name}`;
+    const paceBadge = getPaceBadgeForRace(raceId, info);
+    document.getElementById('race-title').innerHTML = `${info.venue}${info.race_num}R: ${info.race_name} ${paceBadge}`;
     let html = '';
     (info.horses || []).forEach((h, i) => {
         html += `<div class="glass-panel" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="openHorse(${i})">

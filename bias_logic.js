@@ -3,6 +3,17 @@
 // ============================================================
 let currentMainView = 'race';
 
+/**
+ * レースのペース (H / M / S) バッジHTMLを生成する
+ */
+function getPaceBadgeHtml(paceIndex, f3f_l3f) {
+    if (!paceIndex || paceIndex === 'Unknown') return '';
+    const cls = paceIndex === 'H' ? 'pace-badge-h' : (paceIndex === 'S' ? 'pace-badge-s' : 'pace-badge-m');
+    const label = paceIndex === 'H' ? 'H' : (paceIndex === 'S' ? 'S' : 'M');
+    const tooltip = f3f_l3f && f3f_l3f !== 'Unknown' ? ` 前後半3F: ${f3f_l3f}` : '';
+    return `<span class="pace-badge ${cls}" title="${tooltip}">${label}</span>`;
+}
+
 function switchMainView(view) {
     currentMainView = view;
     document.getElementById('bnav-race').classList.toggle('active', view === 'race');
