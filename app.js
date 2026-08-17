@@ -101,8 +101,19 @@ async function syncDataFromDrive() {
             } catch (e) { console.error('bias json parse error', e); }
         }
 
+        // レース結果・払戻金データ同期
+        const resultsFile = await findDriveFile('race_results_data.json');
+        if (resultsFile) {
+            const text = await fetchDriveFileContent(resultsFile.id);
+            try {
+                window.RACE_RESULTS_DATA = JSON.parse(text);
+                await localforage.setItem('raceResultsData', window.RACE_RESULTS_DATA);
+            } catch (e) { console.error('results json parse error', e); }
+        }
+
         status.textContent = '✅ 同期完了！';
         renderDashboard();
+        if (typeof renderPayoffStats === 'function') renderPayoffStats();
     } catch (err) {
         status.textContent = `❌ エラー: ${err.message}`;
     }
@@ -142,6 +153,9 @@ async function loadLocalData() {
     if (reviews) reviewsData = reviews;
     const bias = await localforage.getItem('trackBiasData');
     if (bias) window.TRACK_BIAS_DATA = bias;
+    const resData = await localforage.getItem('raceResultsData');
+    if (resData) window.RACE_RESULTS_DATA = resData;
+    if (typeof renderPayoffStats === 'function') renderPayoffStats();
 }
 
 // ============================================================

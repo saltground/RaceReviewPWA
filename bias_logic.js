@@ -16,14 +16,24 @@ function getPaceBadgeHtml(paceIndex, f3f_l3f) {
 
 function switchMainView(view) {
     currentMainView = view;
-    document.getElementById('bnav-race').classList.toggle('active', view === 'race');
-    document.getElementById('bnav-bias').classList.toggle('active', view === 'bias');
+    const bRace = document.getElementById('bnav-race');
+    const bResults = document.getElementById('bnav-results');
+    const bBias = document.getElementById('bnav-bias');
+    if (bRace) bRace.classList.toggle('active', view === 'race');
+    if (bResults) bResults.classList.toggle('active', view === 'results');
+    if (bBias) bBias.classList.toggle('active', view === 'bias');
+
     if (view === 'race') {
         navigate('dashboard');
+    } else if (view === 'results') {
+        navigate('results');
+        if (typeof switchResultsTab === 'function') {
+            switchResultsTab(typeof currentResultsTab !== 'undefined' ? currentResultsTab : 'stats');
+        }
     } else {
         navigate('bias');
         const dateEl = document.getElementById('bias-date-select');
-        if (!dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+        if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
     }
 }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Race Review & Bias</title>
+    <title>Race Review & Payoffs</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -34,7 +34,7 @@
         <!-- View: Dashboard (Race List) -->
         <div id="view-dashboard" class="view">
             <header class="glass-header">
-                <h2>週末のレース</h2>
+                <h2>今週末のレース</h2>
                 <div class="header-actions">
                     <button id="sync-btn" class="icon-btn">🔄</button>
                     <button id="cache-mgr-btn" class="icon-btn" onclick="navigate('cache')">📦</button>
@@ -134,6 +134,124 @@
             </main>
         </div>
 
+        <!-- View: Race Results & Payoffs (新設) -->
+        <div id="view-results" class="view">
+            <header class="glass-header">
+                <h2>🏆 レース結果 & 払戻金</h2>
+            </header>
+
+            <!-- 内部サブタブ -->
+            <div class="subview-tabs">
+                <button class="subtab-btn active" id="rtab-stats" onclick="switchResultsTab('stats')">📊 平均・最高払戻</button>
+                <button class="subtab-btn" id="rtab-races" onclick="switchResultsTab('races')">🔍 個別レース結果</button>
+            </div>
+
+            <main class="scroll-area">
+                <!-- サブビュー 1: 平均・最高払戻金 -->
+                <div id="results-subview-stats" class="results-subview active">
+                    <!-- 多角的フィルター領域 -->
+                    <div class="filter-panel glass-panel">
+                        <h3 class="filter-title">🔍 条件フィルター</h3>
+                        <div class="filter-grid">
+                            <div class="filter-item">
+                                <label>競馬場</label>
+                                <select id="res-filter-venue" onchange="renderPayoffStats()">
+                                    <option value="">すべて</option>
+                                    <option value="東京">東京</option><option value="中山">中山</option>
+                                    <option value="阪神">阪神</option><option value="京都">京都</option>
+                                    <option value="中京">中京</option><option value="新潟">新潟</option>
+                                    <option value="福島">福島</option><option value="小倉">小倉</option>
+                                    <option value="札幌">札幌</option><option value="函館">函館</option>
+                                </select>
+                            </div>
+                            <div class="filter-item">
+                                <label>コース</label>
+                                <select id="res-filter-surface" onchange="renderPayoffStats()">
+                                    <option value="">すべて</option>
+                                    <option value="芝">芝</option>
+                                    <option value="ダート">ダート</option>
+                                    <option value="障害">障害</option>
+                                </select>
+                            </div>
+                            <div class="filter-item">
+                                <label>馬場状態</label>
+                                <select id="res-filter-condition" onchange="renderPayoffStats()">
+                                    <option value="">すべて</option>
+                                    <option value="良">良</option>
+                                    <option value="稍重">稍重</option>
+                                    <option value="重">重</option>
+                                    <option value="不良">不良</option>
+                                </select>
+                            </div>
+                            <div class="filter-item">
+                                <label>クラス</label>
+                                <select id="res-filter-class" onchange="renderPayoffStats()">
+                                    <option value="">すべて</option>
+                                    <option value="新馬・未勝利">新馬・未勝利</option>
+                                    <option value="1勝クラス">1勝クラス</option>
+                                    <option value="2勝クラス">2勝クラス</option>
+                                    <option value="3勝クラス">3勝クラス</option>
+                                    <option value="OPクラス">OPクラス</option>
+                                </select>
+                            </div>
+                            <div class="filter-item">
+                                <label>距離区分</label>
+                                <select id="res-filter-distance" onchange="renderPayoffStats()">
+                                    <option value="">すべて</option>
+                                    <option value="短距離">短距離 (~1400m)</option>
+                                    <option value="マイル">マイル (1500~1600m)</option>
+                                    <option value="中距離">中距離 (1700~2200m)</option>
+                                    <option value="長距離">長距離 (2300m~)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 券種別 払戻金カード一覧 -->
+                    <div id="payoff-stats-cards" class="payoff-cards-grid">
+                        <div class="placeholder-text">読み込み中...</div>
+                    </div>
+                </div>
+
+                <!-- サブビュー 2: 個別レース結果 -->
+                <div id="results-subview-races" class="results-subview">
+                    <!-- 検索フィルター領域 -->
+                    <div class="filter-panel glass-panel">
+                        <div class="filter-grid">
+                            <div class="filter-item">
+                                <label>開催年/日付</label>
+                                <select id="res-race-year" onchange="renderRecentRaces()">
+                                    <option value="">すべて</option>
+                                    <option value="2026">2026年</option>
+                                    <option value="2025">2025年</option>
+                                </select>
+                            </div>
+                            <div class="filter-item">
+                                <label>競馬場</label>
+                                <select id="res-race-venue" onchange="renderRecentRaces()">
+                                    <option value="">全会場</option>
+                                    <option value="東京">東京</option><option value="中山">中山</option>
+                                    <option value="阪神">阪神</option><option value="京都">京都</option>
+                                    <option value="中京">中京</option><option value="新潟">新潟</option>
+                                    <option value="福島">福島</option><option value="小倉">小倉</option>
+                                    <option value="札幌">札幌</option><option value="函館">函館</option>
+                                </select>
+                            </div>
+                            <div class="filter-item full-width">
+                                <label>キーワード検索 (レース名 / 馬名)</label>
+                                <input type="text" id="res-race-search" placeholder="例: 日本ダービー, ルメール, 東京..." oninput="renderRecentRaces()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- レース結果カードリスト -->
+                    <div id="recent-races-list" class="recent-races-grid">
+                        <div class="placeholder-text">読み込み中...</div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
         <!-- View: Track Bias -->
         <div id="view-bias" class="view">
             <header class="glass-header">
@@ -153,16 +271,11 @@
             <div class="bias-selectors" id="bias-selector-area">
                 <select id="bias-venue-select" onchange="onBiasSelectorChange()">
                     <option value="">会場を選択</option>
-                    <option value="東京">東京</option>
-                    <option value="中山">中山</option>
-                    <option value="阪神">阪神</option>
-                    <option value="京都">京都</option>
-                    <option value="中京">中京</option>
-                    <option value="新潟">新潟</option>
-                    <option value="福島">福島</option>
-                    <option value="小倉">小倉</option>
-                    <option value="札幌">札幌</option>
-                    <option value="函館">函館</option>
+                    <option value="東京">東京</option><option value="中山">中山</option>
+                    <option value="阪神">阪神</option><option value="京都">京都</option>
+                    <option value="中京">中京</option><option value="新潟">新潟</option>
+                    <option value="福島">福島</option><option value="小倉">小倉</option>
+                    <option value="札幌">札幌</option><option value="函館">函館</option>
                 </select>
                 <input type="date" id="bias-date-select" onchange="onBiasSelectorChange()">
             </div>
@@ -248,11 +361,10 @@
                         </div>
                         <div id="today-weather-content" class="placeholder-text" style="margin-top:10px;">会場を選択してください</div>
                     </div>
-                    <!-- クッション値・含水率手動入力（Phase 3.5 自動化済み） -->
+                    <!-- クッション値・含水率手動入力 -->
                     <div class="glass-panel">
                         <h3 class="bias-section-title">📋 馬場数値入力 <span class="badge-manual" id="track-input-badge">手動</span></h3>
                         <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">JRA公式発表のクッション値・含水率（Drive同期後は自動入力）</p>
-                        <!-- Phase 3.5: 馬場整備情報チップ表示エリア -->
                         <div id="today-maintenance-info" style="display:none; margin-bottom:12px;"></div>
                         <div class="today-input-grid">
                             <div class="input-group">
@@ -286,7 +398,11 @@
         <nav class="bottom-nav" id="bottom-nav">
             <button class="bnav-btn active" id="bnav-race" onclick="switchMainView('race')">
                 <span class="bnav-icon">📋</span>
-                <span class="bnav-label">レース</span>
+                <span class="bnav-label">今週末</span>
+            </button>
+            <button class="bnav-btn" id="bnav-results" onclick="switchMainView('results')">
+                <span class="bnav-icon">🏆</span>
+                <span class="bnav-label">レース結果</span>
             </button>
             <button class="bnav-btn" id="bnav-bias" onclick="switchMainView('bias')">
                 <span class="bnav-icon">🏇</span>
@@ -295,14 +411,39 @@
         </nav>
     </div>
 
+    <!-- 個別レース結果 詳細ダイアログ/モーダル -->
+    <div id="modal-race-detail" class="modal-overlay">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <div>
+                    <h2 id="m-race-title" class="modal-title">レース名</h2>
+                    <div id="m-race-date-meta" class="modal-subtitle">メタ情報</div>
+                </div>
+                <button class="modal-close-btn" onclick="closeRaceDetailModal()">✕</button>
+            </div>
+            <div class="modal-body scroll-area">
+                <!-- 🏁 全着順テーブル -->
+                <div class="modal-section">
+                    <h3 class="section-heading">🏁 全出走馬 着順結果</h3>
+                    <div id="m-race-results-table" class="table-responsive"></div>
+                </div>
+                <!-- 💰 払戻金テーブル -->
+                <div class="modal-section" style="margin-top:20px;">
+                    <h3 class="section-heading">💰 払戻金</h3>
+                    <div id="m-race-payoffs-table" class="table-responsive"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <!-- トラックバイアスデータは app.js の syncDataFromDrive にて Google Drive からフェッチする -->
     <script>
         window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
     </script>
+    <script src="race_results_data.js"></script>
     <script src="app.js"></script>
     <script src="bias_logic.js"></script>
+    <script src="results_logic.js"></script>
 </body>
 </html>
-
