@@ -628,15 +628,39 @@ function autoFillTodayTrackData(venue) {
     if (!venue) return;
     let today = new Date().toISOString().slice(0, 10);
     const todayTrackDict = (window.TRACK_BIAS_DATA || {}).today_track || {};
+    const cushionDict    = (window.TRACK_BIAS_DATA || {}).cushion || {};
     
-    // 今日のデータが無ければ、JSON内の最新の日付をフォールバックとして使用する（動作確認用）
-    if (!todayTrackDict[today] && Object.keys(todayTrackDict).length > 0) {
-        const availableDates = Object.keys(todayTrackDict).sort().reverse();
-        today = availableDates[0];
+    let data = (todayTrackDict[today] || {})[venue];
+
+    // ① 今日が無ければ today_trackDict 内で venue のデータを持つ直近の日付を探す
+    if (!data && Object.keys(todayTrackDict).length > 0) {
+        const sortedDates = Object.keys(todayTrackDict).sort().reverse();
+        for (const d of sortedDates) {
+            if (todayTrackDict[d] && todayTrackDict[d][venue]) {
+                data = todayTrackDict[d][venue];
+                break;
+            }
+        }
     }
-    
-    const todayTrack = todayTrackDict[today] || {};
-    const data = todayTrack[venue];
+
+    // ② それでも無ければ cushionDict (履歴) から直近の venue データをフォールバック探索
+    if (!data && Object.keys(cushionDict).length > 0) {
+        const sortedDates = Object.keys(cushionDict).sort().reverse();
+        for (const d of sortedDates) {
+            if (cushionDict[d] && cushionDict[d][venue]) {
+                const rawC = cushionDict[d][venue];
+                data = {
+                    cushion: rawC.cushion,
+                    moisture_turf: rawC.moisture_turf,
+                    moisture_dirt: rawC.moisture_dirt,
+                    track_condition_turf: rawC.track_condition_turf || '良',
+                    track_condition_dirt: rawC.track_condition_dirt || '良',
+                    flags: {}
+                };
+                break;
+            }
+        }
+    }
 
     const badge = document.getElementById('track-input-badge');
 

@@ -114,6 +114,11 @@ async function syncDataFromDrive() {
         status.textContent = '✅ 同期完了！';
         renderDashboard();
         if (typeof renderPayoffStats === 'function') renderPayoffStats();
+        if (typeof onBiasSelectorChange === 'function') onBiasSelectorChange();
+        const todayVenueEl = document.getElementById('today-venue');
+        if (todayVenueEl && todayVenueEl.value && typeof autoFillTodayTrackData === 'function') {
+            autoFillTodayTrackData(todayVenueEl.value);
+        }
     } catch (err) {
         status.textContent = `❌ エラー: ${err.message}`;
     }
@@ -156,6 +161,11 @@ async function loadLocalData() {
     const resData = await localforage.getItem('raceResultsData');
     if (resData) window.RACE_RESULTS_DATA = resData;
     if (typeof renderPayoffStats === 'function') renderPayoffStats();
+    if (typeof onBiasSelectorChange === 'function') onBiasSelectorChange();
+    const todayVenueEl = document.getElementById('today-venue');
+    if (todayVenueEl && todayVenueEl.value && typeof autoFillTodayTrackData === 'function') {
+        autoFillTodayTrackData(todayVenueEl.value);
+    }
 }
 
 // ============================================================

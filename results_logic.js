@@ -1,6 +1,6 @@
 // ============================================================
 //  pwa_app/results_logic.js
-//  レース結果・払戻金ダッシュボード ロジック
+//  レース結果・払戻金ダッシュボード ロジック (フィルター連動対応版)
 // ============================================================
 
 let currentResultsTab = 'stats'; // 'stats' | 'races'
@@ -30,6 +30,7 @@ function switchResultsTab(tabId) {
     if (tabId === 'stats') {
         renderPayoffStats();
     } else if (tabId === 'races') {
+        updateRaceFilterOptions();
         renderRecentRaces();
     }
 }
@@ -58,10 +59,8 @@ function renderPayoffStats() {
     let stats = {};
 
     if (isDefaultFilter) {
-        // 全体プリセット
         stats = data.payoff_stats.all || {};
     } else {
-        // 対象レースを動的にフィルタリングしてリアルタイム集計
         let filteredRaces = data.races || [];
 
         if (venue) filteredRaces = filteredRaces.filter(r => r.venue === venue);
@@ -80,7 +79,6 @@ function renderPayoffStats() {
             });
         }
 
-        // 動的集計
         const payoffsList = [];
         filteredRaces.forEach(r => {
             (r.payoffs || []).forEach(p => {
@@ -114,7 +112,6 @@ function renderPayoffStats() {
         });
     }
 
-    // カード描画
     let html = '';
     TICKET_TYPES.forEach(tName => {
         const item = stats[tName];
@@ -162,6 +159,119 @@ function renderPayoffStats() {
 }
 
 /**
+ * フィルタードロップダウンの相互連動 (Cascading Filter)
+ */
+function updateRaceFilterOptions(changedId) {
+    if (!window.RACE_RESULTS_DATA || !window.RACE_RESULTS_DATA.races) return;
+
+    const allRaces = window.RACE_RESULTS_DATA.races;
+
+    const selYear = document.getElementById('res-race-year');
+    const selMonth = document.getElementById('res-race-month');
+    const selDay = document.getElementById('res-race-day');
+    const selVenue = document.getElementById('res-race-venue');
+    const selRaceNum = document.getElementById('res-race-num');
+
+    const vYear = selYear ? selYear.value : '';
+    const vMonth = selMonth ? selMonth.value : '';
+    const vDay = selDay ? selDay.value : '';
+    const vVenue = selVenue ? selVenue.value : '';
+    const vRaceNum = selRaceNum ? selRaceNum.value : '';
+
+    // 特定項目を除外して、残りの選択条件にマッチするレース群を返す
+    function getFilteredExcluding(excludeKey) {
+        return allRaces.filter(r => {
+            if (excludeKey !== 'year' && vYear && !(r.date || r.id).startsWith(vYear)) return false;
+            if (excludeKey !== 'month' && vMonth) {
+                if (!r.date || !r.date.includes('-')) return false;
+                if (parseInt(r.date.split('-')[1], 10) !== parseInt(vMonth, 10)) return false;
+            }
+            if (excludeKey !== 'day' && vDay) {
+                if (!r.date || !r.date.includes('-')) return false;
+                if (parseInt(r.date.split('-')[2], 10) !== parseInt(vDay, 10)) return false;
+            }
+            if (excludeKey !== 'venue' && vVenue && r.venue !== vVenue) return false;
+            if (excludeKey !== 'raceNum' && vRaceNum && parseInt(r.race_num, 10) !== parseInt(vRaceNum, 10)) return false;
+            return true;
+        });
+    }
+
+    function updateOptions(selectEl, values, typeLabel) {
+        if (!selectEl) return;
+        const curVal = selectEl.value;
+
+        let defaultText = 'すべて';
+        if (typeLabel === '会場') defaultText = '全会場';
+        if (typeLabel === 'R') defaultText = '全R';
+
+        let html = `<option value="">${defaultText}</option>`;
+        values.forEach(v => {
+            let label = String(v);
+            if (typeLabel === '年') label = `${v}年`;
+            if (typeLabel === '月') label = `${v}月`;
+            if (typeLabel === '日') label = `${v}日`;
+            if (typeLabel === 'R') label = `${v}R`;
+
+            const selected = String(v) === String(curVal) ? 'selected' : '';
+            html += `<option value="${v}" ${selected}>${label}</option>`;
+        });
+        selectEl.innerHTML = html;
+    }
+
+    // 1. 年の選択肢更新
+    if (changedId !== 'res-race-year' && selYear) {
+        const races = getFilteredExcluding('year');
+        const setYears = new Set(races.map(r => (r.date || r.id).slice(0, 4)).filter(Boolean));
+        updateOptions(selYear, Array.from(setYears).sort().reverse(), '年');
+    }
+
+    // 2. 月の選択肢更新
+    if (changedId !== 'res-race-month' && selMonth) {
+        const races = getFilteredExcluding('month');
+        const setMonths = new Set(races.map(r => {
+            if (!r.date || !r.date.includes('-')) return null;
+            return parseInt(r.date.split('-')[1], 10);
+        }).filter(n => n !== null));
+        updateOptions(selMonth, Array.from(setMonths).sort((a, b) => a - b), '月');
+    }
+
+    // 3. 日の選択肢更新（実際の開催日のみ！）
+    if (changedId !== 'res-race-day' && selDay) {
+        const races = getFilteredExcluding('day');
+        const setDays = new Set(races.map(r => {
+            if (!r.date || !r.date.includes('-')) return null;
+            return parseInt(r.date.split('-')[2], 10);
+        }).filter(n => n !== null));
+        updateOptions(selDay, Array.from(setDays).sort((a, b) => a - b), '日');
+    }
+
+    // 4. 競馬場の選択肢更新
+    if (changedId !== 'res-race-venue' && selVenue) {
+        const races = getFilteredExcluding('venue');
+        const setVenues = new Set(races.map(r => r.venue).filter(Boolean));
+        const venueOrder = ["東京", "中山", "阪神", "京都", "中京", "新潟", "福島", "小倉", "札幌", "函館"];
+        const sortedVenues = venueOrder.filter(v => setVenues.has(v));
+        setVenues.forEach(v => { if (!sortedVenues.includes(v)) sortedVenues.push(v); });
+        updateOptions(selVenue, sortedVenues, '会場');
+    }
+
+    // 5. レース(R)の選択肢更新
+    if (changedId !== 'res-race-num' && selRaceNum) {
+        const races = getFilteredExcluding('raceNum');
+        const setNums = new Set(races.map(r => parseInt(r.race_num, 10)).filter(n => !isNaN(n)));
+        updateOptions(selRaceNum, Array.from(setNums).sort((a, b) => a - b), 'R');
+    }
+}
+
+/**
+ * フィルター変更イベント用ハンドラ
+ */
+function onRaceFilterChange(changedId) {
+    updateRaceFilterOptions(changedId);
+    renderRecentRaces();
+}
+
+/**
  * 個別レース一覧の検索・描画
  */
 function renderRecentRaces() {
@@ -173,12 +283,12 @@ function renderRecentRaces() {
         return;
     }
 
-    const yearFilter = document.getElementById('res-race-year').value;
-    const monthFilter = document.getElementById('res-race-month').value;
-    const dayFilter = document.getElementById('res-race-day').value;
-    const venueFilter = document.getElementById('res-race-venue').value;
-    const raceNumFilter = document.getElementById('res-race-num').value;
-    const keyword = document.getElementById('res-race-search').value.trim().toLowerCase();
+    const yearFilter = document.getElementById('res-race-year') ? document.getElementById('res-race-year').value : '';
+    const monthFilter = document.getElementById('res-race-month') ? document.getElementById('res-race-month').value : '';
+    const dayFilter = document.getElementById('res-race-day') ? document.getElementById('res-race-day').value : '';
+    const venueFilter = document.getElementById('res-race-venue') ? document.getElementById('res-race-venue').value : '';
+    const raceNumFilter = document.getElementById('res-race-num') ? document.getElementById('res-race-num').value : '';
+    const keyword = document.getElementById('res-race-search') ? document.getElementById('res-race-search').value.trim().toLowerCase() : '';
 
     let races = window.RACE_RESULTS_DATA.races || [];
 
@@ -189,16 +299,14 @@ function renderRecentRaces() {
         const mTarget = parseInt(monthFilter, 10);
         races = races.filter(r => {
             if (!r.date || !r.date.includes('-')) return false;
-            const parts = r.date.split('-');
-            return parseInt(parts[1], 10) === mTarget;
+            return parseInt(r.date.split('-')[1], 10) === mTarget;
         });
     }
     if (dayFilter) {
         const dTarget = parseInt(dayFilter, 10);
         races = races.filter(r => {
             if (!r.date || !r.date.includes('-')) return false;
-            const parts = r.date.split('-');
-            return parseInt(parts[2], 10) === dTarget;
+            return parseInt(r.date.split('-')[2], 10) === dTarget;
         });
     }
     if (venueFilter) {
@@ -216,7 +324,7 @@ function renderRecentRaces() {
         );
     }
 
-    const displayRaces = races.slice(0, 100); // 性能確保のため上限100件表示
+    const displayRaces = races.slice(0, 100);
 
     if (displayRaces.length === 0) {
         container.innerHTML = '<div class="placeholder-text">該当するレースが見つかりません</div>';
@@ -225,7 +333,6 @@ function renderRecentRaces() {
 
     let html = '';
     displayRaces.forEach(r => {
-        // 単勝と三連単の払戻金を検索
         const tanshoPay = (r.payoffs || []).find(p => p.type === '単勝');
         const sanrenPay = (r.payoffs || []).find(p => p.type === '三連単');
 
@@ -267,11 +374,9 @@ function openRaceDetailModal(raceId) {
     const race = window.RACE_RESULTS_DATA.races.find(r => r.id === raceId);
     if (!race) return;
 
-    // ヘッダー情報
     document.getElementById('m-race-title').textContent = `${race.venue}${race.race_num}R ${race.name}`;
     document.getElementById('m-race-date-meta').textContent = `${race.date || ''} | ${race.surface}${race.distance}m | 天候:${race.weather} | 馬場:${race.condition} | ${race.horses_count}頭`;
 
-    // 着順テーブルの生成
     const resultsContainer = document.getElementById('m-race-results-table');
     if (race.results && race.results.length > 0) {
         let rowsHtml = '';
@@ -308,7 +413,6 @@ function openRaceDetailModal(raceId) {
         resultsContainer.innerHTML = '<div class="placeholder-text">着順詳細データがありません</div>';
     }
 
-    // 払戻金テーブルの生成
     const payoffsContainer = document.getElementById('m-race-payoffs-table');
     if (race.payoffs && race.payoffs.length > 0) {
         let pRows = '';
@@ -339,7 +443,6 @@ function openRaceDetailModal(raceId) {
         payoffsContainer.innerHTML = '<div class="placeholder-text">払戻金データがありません</div>';
     }
 
-    // モーダル表示
     const modal = document.getElementById('modal-race-detail');
     if (modal) modal.classList.add('active');
 }
