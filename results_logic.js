@@ -339,14 +339,15 @@ function renderRecentRaces() {
         const tanStr = tanshoPay ? `${tanshoPay.pay.toLocaleString()}円` : '-';
         const sanStr = sanrenPay ? `${sanrenPay.pay.toLocaleString()}円` : '-';
 
-        html += `
+            const paceBadge = typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(r.id) : '';
+            html += `
         <div class="glass-panel race-result-card" onclick="openRaceDetailModal('${r.id}')">
             <div class="rr-card-header">
                 <span class="rr-date">${r.date || '日付不明'}</span>
                 <span class="rr-venue-badge">${r.venue} ${r.race_num}R</span>
                 <span class="rr-class-badge">${r.class}</span>
             </div>
-            <div class="rr-title">${r.name}</div>
+            <div class="rr-title">${r.name} ${paceBadge}</div>
             <div class="rr-meta">
                 <span>🚩 ${r.surface}${r.distance}m (${r.condition})</span>
                 <span>⏱ 勝ちタイム: <strong>${r.win_time || '-'}</strong></span>
@@ -371,10 +372,8 @@ function renderRecentRaces() {
 function openRaceDetailModal(raceId) {
     if (!window.RACE_RESULTS_DATA || !window.RACE_RESULTS_DATA.races) return;
 
-    const race = window.RACE_RESULTS_DATA.races.find(r => r.id === raceId);
-    if (!race) return;
-
-    document.getElementById('m-race-title').textContent = `${race.venue}${race.race_num}R ${race.name}`;
+    const paceBadge = typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(race.id) : '';
+    document.getElementById('m-race-title').innerHTML = `${race.venue}${race.race_num}R ${race.name} ${paceBadge}`;
     document.getElementById('m-race-date-meta').textContent = `${race.date || ''} | ${race.surface}${race.distance}m | 天候:${race.weather} | 馬場:${race.condition} | ${race.horses_count}頭`;
 
     const resultsContainer = document.getElementById('m-race-results-table');

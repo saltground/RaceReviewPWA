@@ -171,14 +171,23 @@ async function loadLocalData() {
 // ============================================================
 //  ダッシュボード描画
 // ============================================================
+/**
+ * レースのペース (H / M / S) バッジHTMLを生成する
+ */
+function getPaceBadgeHtml(paceIndex, f3f_l3f) {
+    if (!paceIndex || paceIndex === 'Unknown' || paceIndex === 'NoLap') return '';
+    const cls = paceIndex === 'H' ? 'pace-badge-h' : (paceIndex === 'S' ? 'pace-badge-s' : 'pace-badge-m');
+    const label = paceIndex === 'H' ? 'H' : (paceIndex === 'S' ? 'S' : 'M');
+    const tooltip = f3f_l3f && f3f_l3f !== 'Unknown' && f3f_l3f !== 'NoLap' ? ` 前後半3F: ${f3f_l3f}` : '';
+    return `<span class="pace-badge ${cls}" title="${tooltip}">${label}</span>`;
+}
+
 function getPaceBadgeForRace(raceId) {
     if (!raceId || raceId === '動画なし') return '';
     if (window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
         const pObj = window.TRACK_BIAS_DATA.race_paces[raceId];
         if (pObj && pObj.pace && pObj.pace !== 'Unknown' && pObj.pace !== 'NoLap') {
-            if (typeof getPaceBadgeHtml === 'function') {
-                return getPaceBadgeHtml(pObj.pace, pObj.f3f_l3f);
-            }
+            return getPaceBadgeHtml(pObj.pace, pObj.f3f_l3f);
         }
     }
     return '';
