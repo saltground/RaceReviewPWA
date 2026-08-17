@@ -182,14 +182,32 @@ function getPaceBadgeHtml(paceIndex, f3f_l3f) {
     return `<span class="pace-badge ${cls}" title="${tooltip}">${label}</span>`;
 }
 
-function getPaceBadgeForRace(raceId) {
-    if (!raceId || raceId === '動画なし') return '';
-    if (window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
+function getPaceBadgeForRace(raceId, pastRaceStr = '') {
+    if ((!raceId || raceId === '動画なし') && !pastRaceStr) return '';
+
+    // ① 第一優先: TRACK_BIAS_DATA.race_paces から探す
+    if (raceId && window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
         const pObj = window.TRACK_BIAS_DATA.race_paces[raceId];
         if (pObj && pObj.pace && pObj.pace !== 'Unknown' && pObj.pace !== 'NoLap') {
             return getPaceBadgeHtml(pObj.pace, pObj.f3f_l3f);
         }
     }
+
+    // ② 第二優先: 過去走テキストからの推定・補完
+    if (pastRaceStr) {
+        const lines = pastRaceStr.split('<br>');
+        const cornerText = lines[7] || ''; // 通過順
+        if (cornerText.includes('1-1') || cornerText.includes('1-1-1')) {
+            return getPaceBadgeHtml('S', 'スロー傾向');
+        } else if (cornerText.match(/(\d+)-(\d+)-(\d+)/)) {
+            const pos = cornerText.match(/(\d+)-(\d+)-(\d+)/);
+            if (pos && parseInt(pos[1]) >= 8) {
+                return getPaceBadgeHtml('H', 'ハイ傾向');
+            }
+        }
+        return getPaceBadgeHtml('M', 'ミドル傾向');
+    }
+
     return '';
 }
 
@@ -246,7 +264,7 @@ function openHorse(index) {
             const prId = lines[0] || '';
             const raceName = lines[4] || '';
             const safeId = prId || '動画なし';
-            const paceBadge = getPaceBadgeForRace(prId);
+            const paceBadge = getPaceBadgeForRace(prId, pr_str);
             tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'} ${paceBadge}</button>`;
         });
         // タブHTMLをDOMに反映してから最初のタブを選択する
@@ -333,7 +351,8 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     // Data03 実フォーマット: "N頭 M番 人 騎手名 斤量" ← 枠番なし、馬番のみ
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
     const metaEl = document.getElementById('horse-meta-info');
-    const paceBadge = getPaceBadgeForRace(nbId);
+    const prStr = (horse && horse.past_races && horse.past_races[tabIndex]) ? horse.past_races[tabIndex] : '';
+    const paceBadge = getPaceBadgeForRace(nbId, prStr);
 
     if (horse && horse.past_races && horse.past_races[tabIndex]) {
         const prLines = horse.past_races[tabIndex].split('<br>');
