@@ -174,13 +174,40 @@ function renderRecentRaces() {
     }
 
     const yearFilter = document.getElementById('res-race-year').value;
+    const monthFilter = document.getElementById('res-race-month').value;
+    const dayFilter = document.getElementById('res-race-day').value;
     const venueFilter = document.getElementById('res-race-venue').value;
+    const raceNumFilter = document.getElementById('res-race-num').value;
     const keyword = document.getElementById('res-race-search').value.trim().toLowerCase();
 
     let races = window.RACE_RESULTS_DATA.races || [];
 
-    if (yearFilter) races = races.filter(r => (r.date || r.id).startsWith(yearFilter));
-    if (venueFilter) races = races.filter(r => r.venue === venueFilter);
+    if (yearFilter) {
+        races = races.filter(r => (r.date || r.id).startsWith(yearFilter));
+    }
+    if (monthFilter) {
+        const mTarget = parseInt(monthFilter, 10);
+        races = races.filter(r => {
+            if (!r.date || !r.date.includes('-')) return false;
+            const parts = r.date.split('-');
+            return parseInt(parts[1], 10) === mTarget;
+        });
+    }
+    if (dayFilter) {
+        const dTarget = parseInt(dayFilter, 10);
+        races = races.filter(r => {
+            if (!r.date || !r.date.includes('-')) return false;
+            const parts = r.date.split('-');
+            return parseInt(parts[2], 10) === dTarget;
+        });
+    }
+    if (venueFilter) {
+        races = races.filter(r => r.venue === venueFilter);
+    }
+    if (raceNumFilter) {
+        const rNum = parseInt(raceNumFilter, 10);
+        races = races.filter(r => parseInt(r.race_num, 10) === rNum);
+    }
     if (keyword) {
         races = races.filter(r =>
             r.name.toLowerCase().includes(keyword) ||

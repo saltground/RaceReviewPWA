@@ -952,6 +952,11 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
 }
+.filter-grid-3col {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
 .filter-item {
     display: flex;
     flex-direction: column;
@@ -959,6 +964,9 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 }
 .filter-item.full-width {
     grid-column: span 2;
+}
+.filter-grid-3col .filter-item.full-width {
+    grid-column: span 3;
 }
 .filter-item label {
     font-size: 11px;
