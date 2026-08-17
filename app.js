@@ -171,18 +171,15 @@ async function loadLocalData() {
 // ============================================================
 //  ダッシュボード描画
 // ============================================================
-function getPaceBadgeForRace(raceId, info) {
-    let paceIndex = info ? info.pace_index : null;
-    let f3f_l3f = info ? info.pace_f3f_l3f : null;
-    if ((!paceIndex || paceIndex === 'Unknown') && window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
+function getPaceBadgeForRace(raceId) {
+    if (!raceId || raceId === '動画なし') return '';
+    if (window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
         const pObj = window.TRACK_BIAS_DATA.race_paces[raceId];
-        if (pObj) {
-            paceIndex = pObj.pace;
-            f3f_l3f = pObj.f3f_l3f;
+        if (pObj && pObj.pace && pObj.pace !== 'Unknown' && pObj.pace !== 'NoLap') {
+            if (typeof getPaceBadgeHtml === 'function') {
+                return getPaceBadgeHtml(pObj.pace, pObj.f3f_l3f);
+            }
         }
-    }
-    if (typeof getPaceBadgeHtml === 'function') {
-        return getPaceBadgeHtml(paceIndex, f3f_l3f);
     }
     return '';
 }
@@ -191,12 +188,8 @@ function renderDashboard() {
     if (!currentRaceData) { document.getElementById('race-list-container').innerHTML = '<div class="placeholder-text">データを同期してください</div>'; return; }
     let html = '';
     for (const [raceId, info] of Object.entries(currentRaceData)) {
-        const paceBadge = getPaceBadgeForRace(raceId, info);
         html += `<div class="glass-panel" style="cursor:pointer;" onclick="openRace('${raceId}')">
-            <div style="font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:space-between;">
-                <span>${info.date} ${info.venue}${info.race_num}R</span>
-                ${paceBadge}
-            </div>
+            <div style="font-weight:800;font-size:16px;">${info.date} ${info.venue}${info.race_num}R</div>
             <div style="color:var(--text-muted);font-size:14px;">${info.race_name}</div>
             <div style="margin-top:8px;display:inline-block;background:rgba(59,130,246,0.3);color:#60a5fa;padding:2px 8px;border-radius:10px;font-size:12px;">出走 ${info.horses ? info.horses.length : 0} 頭</div>
         </div>`;
@@ -210,8 +203,7 @@ function renderDashboard() {
 function openRace(raceId) {
     activeRaceId = raceId;
     const info = currentRaceData[raceId];
-    const paceBadge = getPaceBadgeForRace(raceId, info);
-    document.getElementById('race-title').innerHTML = `${info.venue}${info.race_num}R: ${info.race_name} ${paceBadge}`;
+    document.getElementById('race-title').textContent = `${info.venue}${info.race_num}R: ${info.race_name}`;
     let html = '';
     (info.horses || []).forEach((h, i) => {
         html += `<div class="glass-panel" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="openHorse(${i})">
@@ -233,8 +225,8 @@ function openHorse(index) {
     activeHorseIndex = index;
     const horse = currentRaceData[activeRaceId].horses[index];
     document.getElementById('horse-name-title').textContent = horse.horse_name;
-    // 枠番情報は初期化（タブ選択時に更新される）
-    document.getElementById('horse-meta-info').textContent = '';
+    // 枠番・馬番情報は初期化（タブ選択時に更新される）
+    document.getElementById('horse-meta-info').innerHTML = '';
 
     const tabsContainer = document.getElementById('past-races-tabs');
     let tabsHtml = '';
@@ -245,7 +237,8 @@ function openHorse(index) {
             const prId = lines[0] || '';
             const raceName = lines[4] || '';
             const safeId = prId || '動画なし';
-            tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'}...</button>`;
+            const paceBadge = getPaceBadgeForRace(prId);
+            tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'} ${paceBadge}</button>`;
         });
         // タブHTMLをDOMに反映してから最初のタブを選択する
         tabsContainer.innerHTML = tabsHtml;
@@ -331,18 +324,20 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     // Data03 実フォーマット: "N頭 M番 人 騎手名 斤量" ← 枠番なし、馬番のみ
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
     const metaEl = document.getElementById('horse-meta-info');
+    const paceBadge = getPaceBadgeForRace(nbId);
+
     if (horse && horse.past_races && horse.past_races[tabIndex]) {
         const prLines = horse.past_races[tabIndex].split('<br>');
         const horseInfoText = prLines[5] || '';
         // U+756A = 「番」→ 「N番」のNを馬番として取得
         const mBan = horseInfoText.match(/(\d+)番/);
         if (mBan) {
-            metaEl.textContent = `${mBan[1]}番`;
+            metaEl.innerHTML = `${mBan[1]}番 ${paceBadge}`;
         } else {
-            metaEl.textContent = '';
+            metaEl.innerHTML = paceBadge;
         }
     } else {
-        metaEl.textContent = '';
+        metaEl.innerHTML = paceBadge;
     }
 
     if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
