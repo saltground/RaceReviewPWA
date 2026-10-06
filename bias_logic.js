@@ -32,8 +32,6 @@ function switchMainView(view) {
         }
     } else {
         navigate('bias');
-        const dateEl = document.getElementById('bias-date-select');
-        if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
     }
 }
 
@@ -64,23 +62,21 @@ function switchBiasTab(tabId) {
 
 function onBiasSelectorChange() {
     const venue = document.getElementById('bias-venue-select').value;
-    const date  = document.getElementById('bias-date-select').value;
     if (!venue) return;
-    renderBiasSummary(venue, date);
-    renderBiasTrend(venue, date);
+    renderBiasSummary(venue);
+    renderBiasTrend(venue);
 }
 
 // ============================================================
-//  Phase 2 - サブビュー①: 開催別バイアスサマリー
+//  Phase 2 - サブビュー①: 枠順傾向（旧サマリー）
 // ============================================================
-function renderBiasSummary(venue, date) {
-    renderCushionSection(venue, date);
-    renderWeatherSection(venue, date);
+function renderBiasSummary(venue) {
     renderFrameSection(venue);
 }
 
 function renderCushionSection(venue, date) {
     const el = document.getElementById('bias-cushion-content');
+    if (!el) return;
     const biasData = window.TRACK_BIAS_DATA || {};
     const dateData = (biasData.cushion || {})[date] || {};
     const data = dateData[venue] || null;
@@ -132,6 +128,7 @@ function renderCushionSection(venue, date) {
 
 function renderWeatherSection(venue, date) {
     const el = document.getElementById('bias-weather-content');
+    if (!el) return;
     const biasData = window.TRACK_BIAS_DATA || {};
     const dateData = (biasData.weather || {})[date] || {};
     const dayWeather = dateData[venue] || null;

@@ -279,13 +279,13 @@
 
             <!-- バイアス内部タブ -->
             <div class="bias-subview-tabs" id="bias-tabs">
-                <button class="bias-tab active" id="btab-summary" onclick="switchBiasTab('summary')">📊 サマリー</button>
+                <button class="bias-tab active" id="btab-summary" onclick="switchBiasTab('summary')">🔢 枠順傾向</button>
                 <button class="bias-tab" id="btab-wintime" onclick="switchBiasTab('wintime')">⏱ 勝ち時計</button>
                 <button class="bias-tab" id="btab-trend" onclick="switchBiasTab('trend')">📈 推移</button>
                 <button class="bias-tab" id="btab-today" onclick="switchBiasTab('today')">🌤 当日想定</button>
             </div>
 
-            <!-- 選択フォーム（サマリー・推移共通） -->
+            <!-- 選択フォーム（枠順傾向・推移共通） -->
             <div class="bias-selectors" id="bias-selector-area">
                 <select id="bias-venue-select" onchange="onBiasSelectorChange()">
                     <option value="">会場を選択</option>
@@ -295,20 +295,11 @@
                     <option value="福島">福島</option><option value="小倉">小倉</option>
                     <option value="札幌">札幌</option><option value="函館">函館</option>
                 </select>
-                <input type="date" id="bias-date-select" onchange="onBiasSelectorChange()">
             </div>
 
             <main class="scroll-area" id="bias-content-area">
-                <!-- サブビュー: サマリー -->
+                <!-- サブビュー: 枠順傾向（旧サマリー） -->
                 <div id="bias-subview-summary" class="bias-subview active">
-                    <div id="bias-cushion-section" class="glass-panel">
-                        <h3 class="bias-section-title">🎯 馬場状態</h3>
-                        <div id="bias-cushion-content" class="placeholder-text">会場と日付を選択してください</div>
-                    </div>
-                    <div id="bias-weather-section" class="glass-panel">
-                        <h3 class="bias-section-title">🌤 天気・風（当日）</h3>
-                        <div id="bias-weather-content" class="placeholder-text">会場を選択してください</div>
-                    </div>
                     <div id="bias-frame-section" class="glass-panel">
                         <h3 class="bias-section-title">🔢 枠番別連対率</h3>
                         <div id="bias-frame-content" class="placeholder-text">会場を選択してください</div>
@@ -459,9 +450,9 @@
     <script>
         window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
     </script>
-    <script src="race_results_data.js?v=20260818_2"></script>
-    <script src="app.js?v=20260818_2"></script>
-    <script src="bias_logic.js?v=20260818_2"></script>
-    <script src="results_logic.js?v=20260818_2"></script>
+    <script src="race_results_data.js?v=20261006_1"></script>
+    <script src="app.js?v=20261006_1"></script>
+    <script src="bias_logic.js?v=20261006_1"></script>
+    <script src="results_logic.js?v=20261006_1"></script>
 </body>
 </html>
