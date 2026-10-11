@@ -508,32 +508,16 @@ function renderTodayWeather(venue, records) {
 //  Phase 3 - 総合バイアス判定（5段階ゲージ）
 // ============================================================
 function calcTodayBias() {
-    const venue     = document.getElementById('today-venue').value;
-    const el        = document.getElementById('today-bias-gauge-area');
-    const cushion   = parseFloat(document.getElementById('input-cushion').value);
-    const moistDirt = parseFloat(document.getElementById('input-moisture-dirt').value);
-    const timeDiff  = parseFloat(document.getElementById('input-time-diff').value);
+    const venue      = document.getElementById('today-venue').value;
+    const el         = document.getElementById('today-bias-gauge-area');
+    const cushion    = parseFloat(document.getElementById('input-cushion').value);
+    const moistTurf  = parseFloat(document.getElementById('input-moisture-turf').value);
+    const moistDirt  = parseFloat(document.getElementById('input-moisture-dirt').value);
+    const timeDiff   = parseFloat(document.getElementById('input-time-diff').value);
 
-    let score = 0;
-    const chips = [];
-
-    // クッション値判定
-    if (!isNaN(cushion)) {
-        if (cushion >= 9.5)       { score -= 2;   chips.push({ label: 'クッション' + cushion + '→高速内有利', cls: 'positive' }); }
-        else if (cushion >= 9.0)  { score -= 1;   chips.push({ label: 'クッション' + cushion + '→やや内有利', cls: 'positive' }); }
-        else if (cushion < 7.0)   { score += 2;   chips.push({ label: 'クッション' + cushion + '→低速差し有利', cls: 'negative' }); }
-        else if (cushion < 7.5)   { score += 1;   chips.push({ label: 'クッション' + cushion + '→やや差し有利', cls: 'negative' }); }
-        else                       { chips.push({ label: 'クッション' + cushion + '→標準', cls: 'neutral' }); }
-    }
-
-    // ダート含水率判定
-    if (!isNaN(moistDirt)) {
-        if (moistDirt >= 12)      { score -= 1.5; chips.push({ label: 'ダート含水' + moistDirt + '%→内前有利', cls: 'positive' }); }
-        else if (moistDirt >= 10) { score -= 0.5; chips.push({ label: 'ダート含水' + moistDirt + '%→やや前有利', cls: 'positive' }); }
-        else if (moistDirt < 5)   { score += 1;   chips.push({ label: 'ダート含水' + moistDirt + '%→差し有利', cls: 'negative' }); }
-    }
-
-    // 天気（風バイアス）
+    // 共通データ: 風バイアス
+    let windScore = 0;
+    let windChip = null;
     const cacheKey = 'weather_' + venue + '_' + new Date().toISOString().slice(0, 13);
     const weatherData = todayWeatherCache[cacheKey] || [];
     if (weatherData.length > 0) {
@@ -541,62 +525,152 @@ function calcTodayBias() {
         weatherData.forEach(function(r) { const b = r.wind_bias || '不明'; biasCount[b] = (biasCount[b] || 0) + 1; });
         let dom = '不明', maxCnt = 0;
         for (const k in biasCount) { if (biasCount[k] > maxCnt) { maxCnt = biasCount[k]; dom = k; } }
-        if (dom === '向かい風') { score -= 0.5; chips.push({ label: '向かい風→前有利', cls: 'positive' }); }
-        else if (dom === '追い風') { score += 0.5; chips.push({ label: '追い風→差し有利', cls: 'negative' }); }
+        if (dom === '向かい風') { windScore = -0.5; windChip = { label: '向かい風→前有利', cls: 'positive' }; }
+        else if (dom === '追い風') { windScore = 0.5; windChip = { label: '追い風→差し有利', cls: 'negative' }; }
     }
 
-    // 勝ち時計補正
+    // 共通データ: 時計補正
+    let timeScore = 0;
+    let timeChip = null;
     if (!isNaN(timeDiff)) {
-        if (timeDiff <= -0.5)     { score -= 1; chips.push({ label: '時計' + timeDiff + '秒→高速', cls: 'positive' }); }
-        else if (timeDiff >= 0.5) { score += 1; chips.push({ label: '時計+' + timeDiff + '秒→低速', cls: 'negative' }); }
+        if (timeDiff <= -0.5)     { timeScore = -1.0; timeChip = { label: '時計' + timeDiff + '秒→高速前有利', cls: 'positive' }; }
+        else if (timeDiff >= 0.5) { timeScore = 1.0; timeChip = { label: '時計+' + timeDiff + '秒→低速差し有利', cls: 'negative' }; }
     }
 
-    if (!chips.length) {
-        el.innerHTML = '<div class="placeholder-text" style="margin:0;">数値を入力してください</div>';
+    // 整備フラグの取得
+    let flags = {};
+    const todayTrack = (window.TRACK_BIAS_DATA || {}).today_track || {};
+    if (venue) {
+        const sortedDates = Object.keys(todayTrack).sort().reverse();
+        for (const d of sortedDates) {
+            if (todayTrack[d] && todayTrack[d][venue]) {
+                flags = todayTrack[d][venue].flags || {};
+                break;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------
+    // 1. 🌱 芝コース 判定
+    // ------------------------------------------------------------
+    let scoreTurf = 0;
+    const chipsTurf = [];
+    let hasTurfInput = false;
+
+    // クッション値
+    if (!isNaN(cushion)) {
+        hasTurfInput = true;
+        if (cushion >= 9.5)       { scoreTurf -= 2.0; chipsTurf.push({ label: 'クッション' + cushion + '→高速内有利', cls: 'positive' }); }
+        else if (cushion >= 9.0)  { scoreTurf -= 1.0; chipsTurf.push({ label: 'クッション' + cushion + '→やや内有利', cls: 'positive' }); }
+        else if (cushion < 7.0)   { scoreTurf += 2.0; chipsTurf.push({ label: 'クッション' + cushion + '→低速差し有利', cls: 'negative' }); }
+        else if (cushion < 7.5)   { scoreTurf += 1.0; chipsTurf.push({ label: 'クッション' + cushion + '→やや差し有利', cls: 'negative' }); }
+        else                       { chipsTurf.push({ label: 'クッション' + cushion + '→標準', cls: 'neutral' }); }
+    }
+
+    // 芝含水率
+    if (!isNaN(moistTurf)) {
+        hasTurfInput = true;
+        if (moistTurf >= 15.0)     { scoreTurf += 1.5; chipsTurf.push({ label: '芝含水' + moistTurf + '%→重外差し寄り', cls: 'negative' }); }
+        else if (moistTurf >= 12.0){ scoreTurf += 0.5; chipsTurf.push({ label: '芝含水' + moistTurf + '%→やや差し寄り', cls: 'negative' }); }
+        else if (moistTurf < 10.0) { scoreTurf -= 0.5; chipsTurf.push({ label: '芝含水' + moistTurf + '%→乾燥高速内寄り', cls: 'positive' }); }
+    }
+
+    if (hasTurfInput || windChip || timeChip) {
+        if (windChip) { scoreTurf += windScore; chipsTurf.push(windChip); }
+        if (timeChip) { scoreTurf += timeScore; chipsTurf.push(timeChip); }
+        if (flags.course_change) { scoreTurf -= 1.0; chipsTurf.push({ label: '🔄 コース替わり→内有利', cls: 'positive' }); }
+        if (flags.aeration)      { scoreTurf += 0.5; chipsTurf.push({ label: '⚠️ エアレーション→差し寄り', cls: 'negative' }); }
+        if (flags.watering)      { chipsTurf.push({ label: '💧 芝散水あり', cls: 'neutral' }); }
+    }
+
+    // ------------------------------------------------------------
+    // 2. 🏜️ ダートコース 判定
+    // ------------------------------------------------------------
+    let scoreDirt = 0;
+    const chipsDirt = [];
+    let hasDirtInput = false;
+
+    // ダート含水率
+    if (!isNaN(moistDirt)) {
+        hasDirtInput = true;
+        if (moistDirt >= 12.0)     { scoreDirt -= 2.0; chipsDirt.push({ label: 'ダート含水' + moistDirt + '%→脚抜き良く前・内有利(強)', cls: 'positive' }); }
+        else if (moistDirt >= 8.0) { scoreDirt -= 1.0; chipsDirt.push({ label: 'ダート含水' + moistDirt + '%→やや前・内有利', cls: 'positive' }); }
+        else if (moistDirt < 4.0)  { scoreDirt += 1.5; chipsDirt.push({ label: 'ダート含水' + moistDirt + '%→パサパサ乾燥・外枠差し有利', cls: 'negative' }); }
+        else                       { chipsDirt.push({ label: 'ダート含水' + moistDirt + '%→標準', cls: 'neutral' }); }
+    }
+
+    if (hasDirtInput || windChip || timeChip) {
+        if (windChip) { scoreDirt += windScore; chipsDirt.push(windChip); }
+        if (timeChip) { scoreDirt += timeScore; chipsDirt.push(timeChip); }
+        if (flags.watering) { scoreDirt -= 0.5; chipsDirt.push({ label: '💧 散水→砂締まりやや前寄り', cls: 'positive' }); }
+    }
+
+    // 入力が一切ない場合
+    if (!hasTurfInput && !hasDirtInput && isNaN(timeDiff)) {
+        el.innerHTML = '<div class="placeholder-text" style="margin:0;">馬場数値を入力（または同期）してください</div>';
         return;
     }
 
-    // スコアを 0〜100% に正規化（-4〜+4 の範囲を想定）
-    const norm = Math.max(0, Math.min(100, ((score + 4) / 8) * 100));
-
-    let verdict = '';
-    if      (score <= -2)   verdict = '🟦 内・前有利（強）';
-    else if (score <= -0.75) verdict = '🔵 内・前有利（中）';
-    else if (score <=  0.75) verdict = '⬜ ほぼ中立';
-    else if (score <=  2)   verdict = '🟣 外・差し有利（中）';
-    else                    verdict = '🟪 外・差し有利（強）';
-
-    const chipsHtml = chips.map(function(c) {
-        return '<div class="bias-chip ' + c.cls + '">' + c.label + '</div>';
-    }).join('');
-
-    el.innerHTML =
-        '<div style="font-size:18px;font-weight:800;margin-bottom:12px;">' + verdict + '</div>' +
-        '<div class="bias-gauge-container">' +
-            '<div class="bias-gauge-track">' +
-                '<div class="bias-gauge-needle" style="left:' + norm + '%"></div>' +
-            '</div>' +
-            '<div class="bias-gauge-labels">' +
-                '<span>◀ 内有利</span><span>中立</span><span>外有利 ▶</span>' +
-            '</div>' +
-        '</div>' +
-        '<div class="bias-summary-chips">' + chipsHtml + '</div>';
-
-    // Phase 3.5: 馬場整備フラグがある場合は追加チップを付記
-    const today35 = new Date().toISOString().slice(0, 10);
-    const todayTrack35 = ((window.TRACK_BIAS_DATA || {}).today_track || {})[today35] || {};
-    const trackData35 = todayTrack35[venue];
-    if (trackData35) {
-        const flags35 = trackData35.flags || {};
-        const extraChips = [];
-        if (flags35.course_change) extraChips.push('<div class="bias-chip maintenance-flag">🔄 コース替わり</div>');
-        if (flags35.aeration)      extraChips.push('<div class="bias-chip maintenance-flag">⚠️ エアレーション</div>');
-        if (flags35.watering)      extraChips.push('<div class="bias-chip maintenance-flag">💧 散水あり</div>');
-        if (extraChips.length) {
-            const chipsDiv = el.querySelector('.bias-summary-chips');
-            if (chipsDiv) chipsDiv.innerHTML += extraChips.join('');
+    // ------------------------------------------------------------
+    // HTML 生成ヘルパー
+    // ------------------------------------------------------------
+    function renderCourseCard(title, icon, cardClass, score, chips, isAvailable) {
+        if (!isAvailable && !chips.length) {
+            return '<div class="bias-course-card ' + cardClass + '">' +
+                '<div class="bias-course-header">' +
+                    '<span class="bias-course-title">' + icon + ' ' + title + '</span>' +
+                '</div>' +
+                '<div class="placeholder-text" style="margin:8px 0; font-size:12px;">データ未入力</div>' +
+            '</div>';
         }
+
+        const norm = Math.max(0, Math.min(100, ((score + 4) / 8) * 100));
+        let verdict = '';
+        let verdictColor = '#ffffff';
+
+        if (score <= -2.0) {
+            verdict = '🟦 内・前有利（強）';
+            verdictColor = '#60a5fa';
+        } else if (score <= -0.75) {
+            verdict = '🔵 やや内・前有利';
+            verdictColor = '#38bdf8';
+        } else if (score < 0.75) {
+            verdict = '⬜ ほぼフラット・中立';
+            verdictColor = '#94a3b8';
+        } else if (score < 2.0) {
+            verdict = '🟣 やや外・差し有利';
+            verdictColor = '#c084fc';
+        } else {
+            verdict = '🟪 外・差し有利（強）';
+            verdictColor = '#a855f7';
+        }
+
+        const chipsHtml = chips.map(function(c) {
+            return '<div class="bias-chip ' + c.cls + '" style="font-size:11px; padding:3px 8px;">' + c.label + '</div>';
+        }).join('');
+
+        return '<div class="bias-course-card ' + cardClass + '">' +
+            '<div class="bias-course-header">' +
+                '<span class="bias-course-title">' + icon + ' ' + title + '</span>' +
+                '<span style="font-size:11px; color:var(--text-muted);">スコア: ' + (score > 0 ? '+' : '') + score.toFixed(1) + '</span>' +
+            '</div>' +
+            '<div class="bias-course-verdict" style="color:' + verdictColor + ';">' + verdict + '</div>' +
+            '<div class="bias-gauge-container" style="margin-top:4px;">' +
+                '<div class="bias-gauge-track">' +
+                    '<div class="bias-gauge-needle" style="left:' + norm + '%"></div>' +
+                '</div>' +
+                '<div class="bias-gauge-labels">' +
+                    '<span>◀ 内・前有利</span><span>中立</span><span>外・差し有利 ▶</span>' +
+                '</div>' +
+            '</div>' +
+            '<div class="bias-summary-chips" style="margin-top:8px;">' + chipsHtml + '</div>' +
+        '</div>';
     }
+
+    const turfCardHtml = renderCourseCard('芝コース 判定', '🌱', 'turf-card', scoreTurf, chipsTurf, hasTurfInput);
+    const dirtCardHtml = renderCourseCard('ダートコース 判定', '🏜️', 'dirt-card', scoreDirt, chipsDirt, hasDirtInput);
+
+    el.innerHTML = '<div class="bias-split-container">' + turfCardHtml + dirtCardHtml + '</div>';
 }
 
 // ============================================================

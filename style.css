@@ -1246,4 +1246,74 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
     border-radius: 4px;
 }
 
+/* ============================================================
+   芝・ダート分割 総合バイアス判定
+   ============================================================ */
+.bias-split-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 10px;
+}
+
+@media (min-width: 640px) {
+    .bias-split-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+}
+
+.bias-course-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+    overflow: hidden;
+}
+
+.bias-course-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+}
+
+.bias-course-card.turf-card::before {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.bias-course-card.dirt-card::before {
+    background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+
+.bias-course-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 8px;
+}
+
+.bias-course-title {
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bias-course-verdict {
+    font-size: 15px;
+    font-weight: 800;
+    margin: 4px 0;
+}
+
+
 
