@@ -339,7 +339,8 @@ function renderRecentRaces() {
         const tanStr = tanshoPay ? `${tanshoPay.pay.toLocaleString()}円` : '-';
         const sanStr = sanrenPay ? `${sanrenPay.pay.toLocaleString()}円` : '-';
 
-        const paceBadge = r.pace_index ? getPaceBadgeHtml(r.pace_index, r.pace_f3f_l3f) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(r.id) : '');
+        const diffStr = r.pci_diff !== null && r.pci_diff !== undefined ? (r.pci_diff > 0 ? '+' + r.pci_diff : String(r.pci_diff)) : '';
+        const paceBadge = r.pace_index ? getPaceBadgeHtml(r.pace_index, r.pace_f3f_l3f, diffStr) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(r.id) : '');
         const paceMeta = r.pace_f3f_l3f ? ` (${r.pace_f3f_l3f})` : '';
         html += `
         <div class="glass-panel race-result-card" onclick="openRaceDetailModal('${r.id}')">
@@ -376,53 +377,91 @@ function openRaceDetailModal(raceId) {
     const race = window.RACE_RESULTS_DATA.races.find(r => r.id === raceId);
     if (!race) return;
 
-    const paceBadge = race.pace_index ? getPaceBadgeHtml(race.pace_index, race.pace_f3f_l3f) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(race.id) : '');
+    const diffStr = race.pci_diff !== null && race.pci_diff !== undefined ? (race.pci_diff > 0 ? '+' + race.pci_diff : String(race.pci_diff)) : '';
+    const paceBadge = race.pace_index ? getPaceBadgeHtml(race.pace_index, race.pace_f3f_l3f, diffStr) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(race.id) : '');
     document.getElementById('m-race-title').innerHTML = `${race.venue}${race.race_num}R ${race.name} ${paceBadge}`;
     document.getElementById('m-race-date-meta').textContent = `${race.date || ''} | ${race.surface}${race.distance}m | 天候:${race.weather} | 馬場:${race.condition} | ${race.horses_count}頭 | クラス:${race.class || 'OP'}`;
 
-    // ⏱ ラップタイム推移 & レースペースの描画
+    // ⏱ ラップタイム推移 & レースPCI (RPCI) 展開分析の描画
     const lapsContainer = document.getElementById('m-race-laps-display');
     if (lapsContainer) {
         const lapStr = (race.lap_times || '').trim();
         const paceStr = (race.pace_f3f_l3f || '').trim();
         const pIdx = (race.pace_index || '').trim();
+        const rpciVal = race.rpci !== null && race.rpci !== undefined ? Number(race.rpci).toFixed(1) : null;
+        const stdRpciVal = race.standard_rpci !== null && race.standard_rpci !== undefined ? Number(race.standard_rpci).toFixed(1) : null;
+        const pciDiffVal = race.pci_diff !== null && race.pci_diff !== undefined ? Number(race.pci_diff).toFixed(1) : null;
+        const paceLabel = race.pace_label || '';
 
-        if (lapStr) {
-            const laps = lapStr.split('-').map(s => s.trim()).filter(Boolean);
+        if (lapStr || rpciVal !== null) {
+            let rpciMetricsHtml = '';
+            if (rpciVal !== null) {
+                const diffCls = parseFloat(pciDiffVal) > 0 ? 'rpci-diff-plus' : (parseFloat(pciDiffVal) < 0 ? 'rpci-diff-minus' : 'rpci-diff-neutral');
+                const diffSign = parseFloat(pciDiffVal) > 0 ? `+${pciDiffVal}` : pciDiffVal;
+                rpciMetricsHtml = `
+                <div class="rpci-metric-container">
+                    <div class="rpci-metric-box">
+                        <div class="label">レースPCI (RPCI)</div>
+                        <div class="value">${rpciVal}</div>
+                    </div>
+                    <div class="rpci-metric-box">
+                        <div class="label">コース基準PCI</div>
+                        <div class="value">${stdRpciVal || '-'}</div>
+                    </div>
+                    <div class="rpci-metric-box">
+                        <div class="label">基準差 (ΔPCI)</div>
+                        <div class="value ${diffCls}">${diffSign}</div>
+                    </div>
+                </div>`;
+            }
+
             let ths = '';
             let tds = '';
-            const lapNums = laps.map(l => parseFloat(l));
-            const validNums = lapNums.filter(n => !isNaN(n));
-            const minLap = validNums.length ? Math.min(...validNums) : 999;
+            if (lapStr) {
+                const laps = lapStr.split('-').map(s => s.trim()).filter(Boolean);
+                const lapNums = laps.map(l => parseFloat(l));
+                const validNums = lapNums.filter(n => !isNaN(n));
+                const minLap = validNums.length ? Math.min(...validNums) : 999;
 
-            laps.forEach((l, i) => {
-                const distF = (i + 1) * 200;
-                const isMin = parseFloat(l) === minLap;
-                const minCls = isMin ? 'class="cell-fastest-lap"' : '';
-                ths += `<th>${i + 1}F<br><span style="font-size:9px;color:var(--text-muted);">${distF}m</span></th>`;
-                tds += `<td ${minCls}><strong>${l}</strong></td>`;
-            });
+                laps.forEach((l, i) => {
+                    const distF = (i + 1) * 200;
+                    const isMin = parseFloat(l) === minLap;
+                    const minCls = isMin ? 'class="cell-fastest-lap"' : '';
+                    ths += `<th>${i + 1}F<br><span style="font-size:9px;color:var(--text-muted);">${distF}m</span></th>`;
+                    tds += `<td ${minCls}><strong>${l}</strong></td>`;
+                });
+            }
 
             let paceSummary = '';
-            if (pIdx || paceStr) {
-                const paceCls = pIdx === 'H' ? 'pace-badge-h' : (pIdx === 'S' ? 'pace-badge-s' : 'pace-badge-m');
-                const paceName = pIdx === 'H' ? 'H (ハイペース / 前傾)' : (pIdx === 'S' ? 'S (スローペース / 後傾)' : 'M (ミドルペース / 平均)');
+            if (pIdx || paceStr || paceLabel) {
+                let paceCls = 'pace-badge-m';
+                if (pIdx === 'H+' || pIdx === '超H') paceCls = 'pace-badge-h-plus';
+                else if (pIdx === 'H') paceCls = 'pace-badge-h';
+                else if (pIdx === 'S') paceCls = 'pace-badge-s';
+                else if (pIdx === 'S+' || pIdx === '超S') paceCls = 'pace-badge-s-plus';
+
+                const displayTitle = paceLabel || (pIdx === 'H' ? 'ハイペース / 前傾' : (pIdx === 'S' ? 'スローペース / 後傾' : 'ミドルペース / 平均'));
+
                 paceSummary = `
                 <div class="lap-summary-header">
                     <span class="pace-badge ${paceCls}">${pIdx || 'P'}</span>
-                    <span class="lap-pace-title"><strong>${paceName}</strong></span>
+                    <span class="lap-pace-title"><strong>${displayTitle}</strong></span>
                     ${paceStr ? `<span class="lap-pace-sub">前後半3F: <strong>${paceStr}</strong></span>` : ''}
                 </div>`;
             }
 
-            lapsContainer.innerHTML = `
-            ${paceSummary}
+            const lapTableHtml = lapStr ? `
             <div class="table-responsive" style="margin-top:6px;">
                 <table class="custom-lap-table">
                     <thead><tr>${ths}</tr></thead>
                     <tbody><tr>${tds}</tr></tbody>
                 </table>
-            </div>`;
+            </div>` : '';
+
+            lapsContainer.innerHTML = `
+            ${rpciMetricsHtml}
+            ${paceSummary}
+            ${lapTableHtml}`;
         } else {
             lapsContainer.innerHTML = '<div class="placeholder-text" style="padding:10px 0; margin:0;">ラップタイムデータなし</div>';
         }

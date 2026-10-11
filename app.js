@@ -189,11 +189,20 @@ async function loadLocalData() {
 /**
  * レースのペース (H / M / S) バッジHTMLを生成する
  */
-function getPaceBadgeHtml(paceIndex, f3f_l3f) {
+function getPaceBadgeHtml(paceIndex, f3f_l3f, diffText = '') {
     if (!paceIndex || paceIndex === 'Unknown' || paceIndex === 'NoLap') return '';
-    const cls = paceIndex === 'H' ? 'pace-badge-h' : (paceIndex === 'S' ? 'pace-badge-s' : 'pace-badge-m');
-    const label = paceIndex === 'H' ? 'H' : (paceIndex === 'S' ? 'S' : 'M');
-    const tooltip = f3f_l3f && f3f_l3f !== 'Unknown' && f3f_l3f !== 'NoLap' ? ` 前後半3F: ${f3f_l3f}` : '';
+    let cls = 'pace-badge-m';
+    if (paceIndex === 'H+' || paceIndex === '超H') cls = 'pace-badge-h-plus';
+    else if (paceIndex === 'H') cls = 'pace-badge-h';
+    else if (paceIndex === 'S') cls = 'pace-badge-s';
+    else if (paceIndex === 'S+' || paceIndex === '超S') cls = 'pace-badge-s-plus';
+
+    const label = paceIndex;
+    let tooltip = '';
+    if (diffText) tooltip += `基準差: ${diffText}`;
+    if (f3f_l3f && f3f_l3f !== 'Unknown' && f3f_l3f !== 'NoLap') {
+        tooltip += (tooltip ? ' | ' : '') + `前後半3F: ${f3f_l3f}`;
+    }
     return `<span class="pace-badge ${cls}" title="${tooltip}">${label}</span>`;
 }
 

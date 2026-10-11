@@ -461,6 +461,10 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
     color: #ffffff;
     margin-left: 4px;
 }
+.pace-badge-h-plus {
+    background: linear-gradient(135deg, #b91c1c, #7f1d1d);
+    box-shadow: 0 0 6px rgba(185, 28, 28, 0.6);
+}
 .pace-badge-h {
     background: linear-gradient(135deg, #ef4444, #dc2626);
     box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
@@ -472,6 +476,10 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 .pace-badge-s {
     background: linear-gradient(135deg, #10b981, #059669);
     box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+.pace-badge-s-plus {
+    background: linear-gradient(135deg, #06b6d4, #0d9488);
+    box-shadow: 0 0 6px rgba(6, 182, 212, 0.5);
 }
 
 /* ============================================================
@@ -1365,5 +1373,32 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
     border-radius: 4px;
 }
 
-
-
+/* ============================================================
+   RPCI (レースPCI) & コース基準値 指標グリッド
+   ============================================================ */
+.rpci-metric-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.rpci-metric-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+}
+.rpci-metric-box .label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+}
+.rpci-metric-box .value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f8fafc;
+}
+.rpci-diff-plus { color: #34d399 !important; } /* スロー・後傾 (プラス) */
+.rpci-diff-minus { color: #f87171 !important; } /* ハイ・前傾 (マイナス) */
+.rpci-diff-neutral { color: #38bdf8 !important; } /* 平均 */
