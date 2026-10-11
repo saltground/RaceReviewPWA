@@ -623,11 +623,22 @@ async function reloadBiasData() {
  */
 function autoFillTodayTrackData(venue) {
     if (!venue) return;
-    let today = new Date().toISOString().slice(0, 10);
+    
+    // 日本時間 (JST: Asia/Tokyo) の当日日付 (YYYY-MM-DD)
+    const now = new Date();
+    let today = '';
+    try {
+        today = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now).replace(/\//g, '-');
+    } catch (e) {
+        today = now.toISOString().slice(0, 10);
+    }
+
     const todayTrackDict = (window.TRACK_BIAS_DATA || {}).today_track || {};
     const cushionDict    = (window.TRACK_BIAS_DATA || {}).cushion || {};
     
     let data = (todayTrackDict[today] || {})[venue];
+    let isToday = true;
+    let refDate = today;
 
     // ① 今日が無ければ today_trackDict 内で venue のデータを持つ直近の日付を探す
     if (!data && Object.keys(todayTrackDict).length > 0) {
@@ -635,6 +646,10 @@ function autoFillTodayTrackData(venue) {
         for (const d of sortedDates) {
             if (todayTrackDict[d] && todayTrackDict[d][venue]) {
                 data = todayTrackDict[d][venue];
+                if (d !== today) {
+                    isToday = false;
+                    refDate = d;
+                }
                 break;
             }
         }
@@ -652,8 +667,12 @@ function autoFillTodayTrackData(venue) {
                     moisture_dirt: rawC.moisture_dirt,
                     track_condition_turf: rawC.track_condition_turf || '良',
                     track_condition_dirt: rawC.track_condition_dirt || '良',
+                    cushion_measured_at: rawC.cushion_measured_at || (d + ' 測定'),
+                    moist_measured_at: rawC.moist_measured_at || '',
                     flags: {}
                 };
+                isToday = false;
+                refDate = d;
                 break;
             }
         }
@@ -662,8 +681,8 @@ function autoFillTodayTrackData(venue) {
     const badge = document.getElementById('track-input-badge');
 
     if (!data) {
-        // データなし → 手動入力モードのまま
-        if (badge) { badge.textContent = '手動'; badge.className = 'badge-manual'; }
+        // データなし → 手動入力モード
+        if (badge) { badge.textContent = '手動'; badge.className = 'badge-manual'; badge.removeAttribute('style'); }
         const infoEl = document.getElementById('today-maintenance-info');
         if (infoEl) infoEl.style.display = 'none';
         return;
@@ -678,20 +697,32 @@ function autoFillTodayTrackData(venue) {
     if (moistTurfEl && data.moisture_turf != null) moistTurfEl.value   = data.moisture_turf;
     if (moistDirtEl && data.moisture_dirt != null) moistDirtEl.value   = data.moisture_dirt;
 
-    // ---- バッジを「自動」に切り替え ----
-    if (badge) { badge.textContent = '自動'; badge.className = 'badge-auto'; }
+    // ---- バッジの切り替え ----
+    if (badge) {
+        if (isToday) {
+            badge.textContent = '自動 (当日)';
+            badge.className = 'badge-auto';
+            badge.removeAttribute('style');
+        } else {
+            badge.textContent = '過去参照 (' + refDate.slice(5) + ')';
+            badge.className = 'badge-manual';
+            badge.style.background = 'rgba(245, 158, 11, 0.2)';
+            badge.style.color = '#fbbf24';
+            badge.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+        }
+    }
 
     // ---- 馬場整備情報チップを表示 ----
-    showMaintenanceInfo(data, venue);
+    showMaintenanceInfo(data, venue, isToday, refDate);
 
     // ---- バイアス判定を再計算 ----
     calcTodayBias();
 }
 
 /**
- * 馬場整備情報（コース替わり・エアレーション・散水・馬場状態）を表示する。
+ * 馬場整備情報（コース替わり・エアレーション・散水・馬場状態・測定時刻）を表示する。
  */
-function showMaintenanceInfo(data, venue) {
+function showMaintenanceInfo(data, venue, isToday = true, refDate = '') {
     const infoEl = document.getElementById('today-maintenance-info');
     if (!infoEl) return;
 
@@ -720,9 +751,18 @@ function showMaintenanceInfo(data, venue) {
     }
 
     // 測定時刻
-    const measuredInfo = data.cushion_measured_at
-        ? '<div class="measured-at">📅 測定時刻: ' + data.cushion_measured_at + ' / 含水率: ' + (data.moist_measured_at || '不明') + '</div>'
-        : '';
+    let measuredInfo = '';
+    if (data.cushion_measured_at) {
+        if (!isToday) {
+            measuredInfo = '<div class="measured-at warning" style="color: #fbbf24; font-size: 11px; margin-top: 8px; padding: 6px 10px; background: rgba(245, 158, 11, 0.1); border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.3);">' +
+                '⚠️ <strong>本日の当日データが未同期です</strong>（' + refDate + ' 開催の数値を参照中）<br>' +
+                '📅 過去測定: ' + data.cushion_measured_at + (data.moist_measured_at ? ' / 含水率: ' + data.moist_measured_at : '') +
+                '<br><span style="color:#94a3b8; font-size:10px;">※PC側で fetch_today_track.bat を実行してDrive同期すると本日の数値になります</span></div>';
+        } else {
+            measuredInfo = '<div class="measured-at" style="font-size: 11px; margin-top: 6px; color: #10b981;">' +
+                '📅 測定時刻: ' + data.cushion_measured_at + (data.moist_measured_at ? ' / 含水率: ' + data.moist_measured_at : '') + '</div>';
+        }
+    }
 
     if (!chips.length && !measuredInfo) {
         infoEl.style.display = 'none';
