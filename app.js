@@ -158,6 +158,21 @@ async function loadLocalData() {
     if (reviews) reviewsData = reviews;
     const bias = await localforage.getItem('trackBiasData');
     if (bias) window.TRACK_BIAS_DATA = bias;
+
+    // 同梱またはローカルサーバーの最新 track_bias_data.json を自動フェッチ
+    try {
+        const resp = await fetch('track_bias_data.json?v=' + Date.now());
+        if (resp.ok) {
+            const freshBias = await resp.json();
+            if (freshBias && freshBias.today_track) {
+                window.TRACK_BIAS_DATA = freshBias;
+                await localforage.setItem('trackBiasData', freshBias);
+            }
+        }
+    } catch (e) {
+        // オフラインまたは未配置時は既存キャッシュを維持
+    }
+
     const resData = await localforage.getItem('raceResultsData');
     if (resData) window.RACE_RESULTS_DATA = resData;
     if (typeof renderPayoffStats === 'function') renderPayoffStats();
