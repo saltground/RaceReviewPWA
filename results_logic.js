@@ -339,8 +339,9 @@ function renderRecentRaces() {
         const tanStr = tanshoPay ? `${tanshoPay.pay.toLocaleString()}円` : '-';
         const sanStr = sanrenPay ? `${sanrenPay.pay.toLocaleString()}円` : '-';
 
-            const paceBadge = typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(r.id) : '';
-            html += `
+        const paceBadge = r.pace_index ? getPaceBadgeHtml(r.pace_index, r.pace_f3f_l3f) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(r.id) : '');
+        const paceMeta = r.pace_f3f_l3f ? ` (${r.pace_f3f_l3f})` : '';
+        html += `
         <div class="glass-panel race-result-card" onclick="openRaceDetailModal('${r.id}')">
             <div class="rr-card-header">
                 <span class="rr-date">${r.date || '日付不明'}</span>
@@ -350,7 +351,7 @@ function renderRecentRaces() {
             <div class="rr-title">${r.name} ${paceBadge}</div>
             <div class="rr-meta">
                 <span>🚩 ${r.surface}${r.distance}m (${r.condition})</span>
-                <span>⏱ 勝ちタイム: <strong>${r.win_time || '-'}</strong></span>
+                <span>⏱ 勝ちタイム: <strong>${r.win_time || '-'}</strong>${paceMeta}</span>
             </div>
             <div class="rr-winner-row">
                 <span>🥇 1着: <strong>${r.winner}</strong></span>
@@ -372,9 +373,60 @@ function renderRecentRaces() {
 function openRaceDetailModal(raceId) {
     if (!window.RACE_RESULTS_DATA || !window.RACE_RESULTS_DATA.races) return;
 
-    const paceBadge = typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(race.id) : '';
+    const race = window.RACE_RESULTS_DATA.races.find(r => r.id === raceId);
+    if (!race) return;
+
+    const paceBadge = race.pace_index ? getPaceBadgeHtml(race.pace_index, race.pace_f3f_l3f) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(race.id) : '');
     document.getElementById('m-race-title').innerHTML = `${race.venue}${race.race_num}R ${race.name} ${paceBadge}`;
-    document.getElementById('m-race-date-meta').textContent = `${race.date || ''} | ${race.surface}${race.distance}m | 天候:${race.weather} | 馬場:${race.condition} | ${race.horses_count}頭`;
+    document.getElementById('m-race-date-meta').textContent = `${race.date || ''} | ${race.surface}${race.distance}m | 天候:${race.weather} | 馬場:${race.condition} | ${race.horses_count}頭 | クラス:${race.class || 'OP'}`;
+
+    // ⏱ ラップタイム推移 & レースペースの描画
+    const lapsContainer = document.getElementById('m-race-laps-display');
+    if (lapsContainer) {
+        const lapStr = (race.lap_times || '').trim();
+        const paceStr = (race.pace_f3f_l3f || '').trim();
+        const pIdx = (race.pace_index || '').trim();
+
+        if (lapStr) {
+            const laps = lapStr.split('-').map(s => s.trim()).filter(Boolean);
+            let ths = '';
+            let tds = '';
+            const lapNums = laps.map(l => parseFloat(l));
+            const validNums = lapNums.filter(n => !isNaN(n));
+            const minLap = validNums.length ? Math.min(...validNums) : 999;
+
+            laps.forEach((l, i) => {
+                const distF = (i + 1) * 200;
+                const isMin = parseFloat(l) === minLap;
+                const minCls = isMin ? 'class="cell-fastest-lap"' : '';
+                ths += `<th>${i + 1}F<br><span style="font-size:9px;color:var(--text-muted);">${distF}m</span></th>`;
+                tds += `<td ${minCls}><strong>${l}</strong></td>`;
+            });
+
+            let paceSummary = '';
+            if (pIdx || paceStr) {
+                const paceCls = pIdx === 'H' ? 'pace-badge-h' : (pIdx === 'S' ? 'pace-badge-s' : 'pace-badge-m');
+                const paceName = pIdx === 'H' ? 'H (ハイペース / 前傾)' : (pIdx === 'S' ? 'S (スローペース / 後傾)' : 'M (ミドルペース / 平均)');
+                paceSummary = `
+                <div class="lap-summary-header">
+                    <span class="pace-badge ${paceCls}">${pIdx || 'P'}</span>
+                    <span class="lap-pace-title"><strong>${paceName}</strong></span>
+                    ${paceStr ? `<span class="lap-pace-sub">前後半3F: <strong>${paceStr}</strong></span>` : ''}
+                </div>`;
+            }
+
+            lapsContainer.innerHTML = `
+            ${paceSummary}
+            <div class="table-responsive" style="margin-top:6px;">
+                <table class="custom-lap-table">
+                    <thead><tr>${ths}</tr></thead>
+                    <tbody><tr>${tds}</tr></tbody>
+                </table>
+            </div>`;
+        } else {
+            lapsContainer.innerHTML = '<div class="placeholder-text" style="padding:10px 0; margin:0;">ラップタイムデータなし</div>';
+        }
+    }
 
     const resultsContainer = document.getElementById('m-race-results-table');
     if (race.results && race.results.length > 0) {
