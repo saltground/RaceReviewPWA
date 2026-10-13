@@ -42,20 +42,8 @@ window.onload = async function () {
     });
     document.getElementById('save-btn').addEventListener('click', saveCurrentReview);
 
-    // 文字入力中も動画を常に上部で見れるようにするフォーカス制御
-    const evalForm = document.querySelector('.evaluation-form');
-    const viewHorse = document.getElementById('view-horse');
-    if (evalForm && viewHorse) {
-        evalForm.addEventListener('focusin', (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                viewHorse.classList.add('is-typing');
-                window.scrollTo(0, 0);
-            }
-        });
-        evalForm.addEventListener('focusout', () => {
-            viewHorse.classList.remove('is-typing');
-        });
-    }
+    // 文字入力中も動画を常に上部で見れるようにするVisualViewport連動制御
+    setupTypingVideoLock();
 };
 
 // ============================================================
@@ -205,7 +193,13 @@ async function loadLocalData() {
     }
 
     const resData = await localforage.getItem('raceResultsData');
-    if (resData) window.RACE_RESULTS_DATA = resData;
+    // キャッシュに course_standards または rpci が正しく含まれている場合のみ採用。なければ最新同梱データを優先！
+    if (resData && (resData.course_standards || (resData.races && resData.races[0] && 'rpci' in resData.races[0]))) {
+        window.RACE_RESULTS_DATA = resData;
+    } else if (window.RACE_RESULTS_DATA) {
+        // 最新の同梱データを IndexedDB に保存して更新
+        await localforage.setItem('raceResultsData', window.RACE_RESULTS_DATA);
+    }
     if (typeof renderPayoffStats === 'function') renderPayoffStats();
     if (typeof onBiasSelectorChange === 'function') onBiasSelectorChange();
     const todayVenueEl = document.getElementById('today-venue');
@@ -500,36 +494,42 @@ async function saveCurrentReview() {
  * 過去レースのRPCIおよびペース情報を取得
  */
 function getPastRacePciData(nbId, prStr = '') {
-    let raceId = (nbId && nbId !== '動画なし') ? nbId : '';
+    let raceId = (nbId && nbId !== '動画なし') ? String(nbId).trim() : '';
     if (!raceId && prStr) {
         const lines = prStr.split('<br>');
         if (lines[0] && lines[0].length >= 10 && lines[0] !== '動画なし') {
-            raceId = lines[0];
+            raceId = lines[0].trim();
         }
     }
+
+    let pciObj = null;
 
     // 1. RACE_RESULTS_DATA から検索
     if (raceId && window.RACE_RESULTS_DATA && window.RACE_RESULTS_DATA.races) {
         const found = window.RACE_RESULTS_DATA.races.find(r => r.id === raceId);
         if (found) {
-            return {
+            const hasNumRpci = found.rpci !== null && found.rpci !== undefined && !isNaN(Number(found.rpci)) && String(found.rpci) !== 'undefined';
+            const hasNumStd = found.standard_rpci !== null && found.standard_rpci !== undefined && !isNaN(Number(found.standard_rpci)) && String(found.standard_rpci) !== 'undefined';
+            const hasNumDiff = found.pci_diff !== null && found.pci_diff !== undefined && !isNaN(Number(found.pci_diff)) && String(found.pci_diff) !== 'undefined';
+
+            pciObj = {
                 id: found.id,
-                name: found.name,
-                rpci: found.rpci,
-                standard_rpci: found.standard_rpci,
-                pci_diff: found.pci_diff,
-                pace_category: found.pace_category || found.pace_index,
-                pace_label: found.pace_label,
-                pace_f3f_l3f: found.pace_f3f_l3f
+                name: found.name || '',
+                rpci: hasNumRpci ? Number(found.rpci) : null,
+                standard_rpci: hasNumStd ? Number(found.standard_rpci) : null,
+                pci_diff: hasNumDiff ? Number(found.pci_diff) : null,
+                pace_category: found.pace_category || found.pace_index || '',
+                pace_label: found.pace_label || '',
+                pace_f3f_l3f: found.pace_f3f_l3f || ''
             };
         }
     }
 
-    // 2. TRACK_BIAS_DATA.race_paces から検索
-    if (raceId && window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
+    // 2. TRACK_BIAS_DATA.race_paces から検索（フォールバック）
+    if (!pciObj && raceId && window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
         const pObj = window.TRACK_BIAS_DATA.race_paces[raceId];
         if (pObj && pObj.pace && pObj.pace !== 'Unknown' && pObj.pace !== 'NoLap') {
-            return {
+            pciObj = {
                 id: raceId,
                 name: '',
                 rpci: null,
@@ -537,11 +537,43 @@ function getPastRacePciData(nbId, prStr = '') {
                 pci_diff: null,
                 pace_category: pObj.pace,
                 pace_label: pObj.pace === 'H' ? 'ハイペース / 前傾' : (pObj.pace === 'S' ? 'スローペース / 後傾' : 'ミドルペース / 平均'),
-                pace_f3f_l3f: pObj.f3f_l3f
+                pace_f3f_l3f: pObj.f3f_l3f || ''
             };
         }
     }
 
+    // 3. コース基準データ（COURSE_PCI_STANDARDS）からの補完
+    if (pciObj && pciObj.standard_rpci === null && prStr) {
+        // prStr から競馬場・距離を推定して基準RPCIを補完
+        const std = lookupCourseStandard(prStr);
+        if (std) {
+            pciObj.standard_rpci = std;
+        }
+    }
+
+    return pciObj;
+}
+
+/**
+ * 過去走文字列からコース基準値をルックアップ
+ */
+function lookupCourseStandard(prStr) {
+    if (!prStr || !window.COURSE_PCI_STANDARDS) return null;
+    const lines = prStr.split('<br>');
+    const venueKaisai = lines[2] || '';
+    const distText = lines[6] || '';
+    const venueMap = {'東':'東京','中':'中山','阪':'阪神','京':'京都','名':'中京','新':'新潟','福':'福島','小':'小倉','札':'札幌','函':'函館'};
+    let vName = '';
+    for (const [ch, name] of Object.entries(venueMap)) {
+        if (venueKaisai.includes(ch)) { vName = name; break; }
+    }
+    const distM = distText.match(/(\d{4})/);
+    const surf = distText.includes('ダ') ? 'ダ' : (distText.includes('芝') ? '芝' : '');
+    if (vName && distM && surf) {
+        const cKey = `${vName}_${surf}${distM[1]}`;
+        const item = window.COURSE_PCI_STANDARDS[cKey];
+        if (item && item.mean_rpci) return item.mean_rpci;
+    }
     return null;
 }
 
@@ -556,7 +588,7 @@ function renderPastRaceRpcibar(pciData, nbId, prStr) {
         const badge = getPaceBadgeForRace(nbId, prStr);
         if (badge) {
             bar.style.display = 'flex';
-            bar.innerHTML = `<span class="pr-rpci-sub">展開傾向:</span> <span class="pr-rpci-pace">${badge}</span>`;
+            bar.innerHTML = `<span class="pr-rpci-sub">ペース傾向:</span> <span class="pr-rpci-pace">${badge}</span>`;
         } else {
             bar.style.display = 'none';
         }
@@ -564,34 +596,113 @@ function renderPastRaceRpcibar(pciData, nbId, prStr) {
     }
 
     bar.style.display = 'flex';
-    const diffSign = pciData.pci_diff !== null && pciData.pci_diff !== undefined
-        ? (pciData.pci_diff > 0 ? `+${pciData.pci_diff}` : `${pciData.pci_diff}`)
-        : '';
-    const diffCls = pciData.pci_diff > 0 ? 'rpci-diff-plus' : (pciData.pci_diff < 0 ? 'rpci-diff-minus' : 'rpci-diff-neutral');
-    const badgeHtml = getPaceBadgeHtml(pciData.pace_category, pciData.pace_f3f_l3f, diffSign);
+    const hasRpci = pciData.rpci !== null && pciData.rpci !== undefined && !isNaN(Number(pciData.rpci));
+    const hasStd = pciData.standard_rpci !== null && pciData.standard_rpci !== undefined && !isNaN(Number(pciData.standard_rpci));
+    const hasDiff = pciData.pci_diff !== null && pciData.pci_diff !== undefined && !isNaN(Number(pciData.pci_diff));
 
-    let html = '';
-    if (pciData.rpci !== null && pciData.rpci !== undefined) {
-        html += `
+    let mainHtml = '';
+    if (hasRpci) {
+        const diffNum = Number(pciData.pci_diff);
+        const diffSign = hasDiff ? (diffNum > 0 ? `+${diffNum.toFixed(1)}` : `${diffNum.toFixed(1)}`) : '';
+        const diffCls = diffNum > 0 ? 'rpci-diff-plus' : (diffNum < 0 ? 'rpci-diff-minus' : 'rpci-diff-neutral');
+        const stdStr = hasStd ? Number(pciData.standard_rpci).toFixed(1) : '-';
+        const diffPart = hasDiff ? `/ 差: <span class="${diffCls}"><strong>${diffSign}</strong></span>` : '';
+        mainHtml = `
         <div class="pr-rpci-main">
-            <span>RPCI: <span class="pr-rpci-val">${pciData.rpci}</span></span>
-            <span class="pr-rpci-sub">(基準: ${pciData.standard_rpci || '-'} / 差: <span class="${diffCls}"><strong>${diffSign}</strong></span>)</span>
+            <span>RPCI: <span class="pr-rpci-val">${Number(pciData.rpci).toFixed(1)}</span></span>
+            <span class="pr-rpci-sub">(基準: ${stdStr} ${diffPart})</span>
+        </div>`;
+    } else if (hasStd) {
+        mainHtml = `
+        <div class="pr-rpci-main">
+            <span class="pr-rpci-sub">コース基準RPCI: <span class="pr-rpci-val">${Number(pciData.standard_rpci).toFixed(1)}</span></span>
         </div>`;
     } else {
-        html += `<div class="pr-rpci-main"><span class="pr-rpci-sub">ペース判定:</span></div>`;
+        mainHtml = `<div class="pr-rpci-main"><span class="pr-rpci-sub">ペース判定:</span></div>`;
     }
 
+    const badgeDiffText = hasDiff ? (Number(pciData.pci_diff) > 0 ? `+${pciData.pci_diff}` : `${pciData.pci_diff}`) : '';
+    const badgeHtml = getPaceBadgeHtml(pciData.pace_category, pciData.pace_f3f_l3f, badgeDiffText);
     const labelStr = pciData.pace_label ? `<span>${pciData.pace_label}</span>` : '';
-    const f3fStr = pciData.pace_f3f_l3f ? `<span class="pr-rpci-sub">3F: ${pciData.pace_f3f_l3f}</span>` : '';
+    const f3fStr = pciData.pace_f3f_l3f && pciData.pace_f3f_l3f !== 'Unknown' && pciData.pace_f3f_l3f !== 'NoLap'
+        ? `<span class="pr-rpci-sub">3F: ${pciData.pace_f3f_l3f}</span>` : '';
 
-    html += `
+    bar.innerHTML = `
+    ${mainHtml}
     <div class="pr-rpci-pace">
         ${badgeHtml}
         ${labelStr}
         ${f3fStr}
     </div>`;
+}
 
-    bar.innerHTML = html;
+/**
+ * スマホ文字入力時の動画常時上部固定 & VisualViewport連動制御
+ */
+function setupTypingVideoLock() {
+    const viewHorse = document.getElementById('view-horse');
+    const formScrollArea = document.querySelector('#view-horse .form-scroll-area');
+    if (!viewHorse) return;
+
+    let isKeyboardOpen = false;
+
+    // 1. フォーカス時：即座に is-typing モードを適用
+    viewHorse.addEventListener('focusin', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            isKeyboardOpen = true;
+            viewHorse.classList.add('is-typing');
+
+            // ブラウザの強制ウィンドウスクロールを即時リセット
+            window.scrollTo(0, 0);
+
+            // フォーカスされた入力欄をフォームコンテナ内でスムーズに見える位置へスクロール
+            setTimeout(() => {
+                window.scrollTo(0, 0);
+                if (formScrollArea && e.target) {
+                    const rect = e.target.getBoundingClientRect();
+                    const containerRect = formScrollArea.getBoundingClientRect();
+                    if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
+                        e.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
+            }, 80);
+        }
+    });
+
+    // 2. フォーカス解除時：通常モードへ復帰
+    viewHorse.addEventListener('focusout', () => {
+        setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA')) {
+                isKeyboardOpen = false;
+                viewHorse.classList.remove('is-typing');
+                if (viewHorse.style.height) viewHorse.style.height = '';
+            }
+        }, 150);
+    });
+
+    // 3. VisualViewport 連動（iOS Safari / Android キーボード対応）
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            if (isKeyboardOpen && viewHorse.classList.contains('active')) {
+                // 可視領域の高さにコンテナを完全フィットさせ、画面全体のスクロールをゼロに固定
+                viewHorse.style.height = `${window.visualViewport.height}px`;
+                window.scrollTo(0, 0);
+            }
+        });
+        window.visualViewport.addEventListener('scroll', () => {
+            if (isKeyboardOpen) {
+                window.scrollTo(0, 0);
+            }
+        });
+    }
+
+    // 4. ウィンドウ自体のスクロールを常にゼロに抑え込む
+    window.addEventListener('scroll', () => {
+        if (isKeyboardOpen && window.scrollY > 0) {
+            window.scrollTo(0, 0);
+        }
+    });
 }
 
 async function selectPastRace(tabIndex, nbId, updateTabs = true) {
@@ -610,7 +721,8 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     renderPastRaceRpcibar(pciData, nbId, prStr);
 
     const paceBadge = pciData ? getPaceBadgeHtml(pciData.pace_category, pciData.pace_f3f_l3f, pciData.pci_diff) : getPaceBadgeForRace(nbId, prStr);
-    const rpciShort = (pciData && pciData.rpci !== null) ? `RPCI ${pciData.rpci}` : '';
+    const hasValidRpci = pciData && pciData.rpci !== null && pciData.rpci !== undefined && !isNaN(Number(pciData.rpci)) && String(pciData.rpci) !== 'undefined';
+    const rpciShort = hasValidRpci ? `RPCI ${Number(pciData.rpci).toFixed(1)}` : '';
 
     let mBanStr = '';
     if (horse && horse.past_races && horse.past_races[tabIndex]) {

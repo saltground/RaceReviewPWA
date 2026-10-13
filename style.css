@@ -1424,56 +1424,89 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
    動画 & メディアエリア固定（文字入力中も常時上部表示）
    ============================================================ */
 #view-horse {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
-    height: 100%;
     overflow: hidden;
+    background: var(--bg-color);
 }
 
+/* 固定メディアエリア：最上部に絶対に固定 */
 .fixed-media-area {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 50;
     flex-shrink: 0;
-    padding: 10px 14px 6px 14px;
-    background: var(--bg-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    transition: all 0.25s ease;
+    padding: 8px 12px 6px 12px;
+    background: #0f172a;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    border-bottom: 1px solid var(--glass-border);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 動画サイズ（通常時） */
+/* 通常時の動画プレイヤー */
 .video-container {
-    max-height: 220px;
-    transition: max-height 0.25s ease;
+    max-height: 200px;
+    transition: max-height 0.2s ease;
+    overflow: hidden;
+    background: #000;
+    border-radius: 8px;
 }
 #video-slot video, #video-slot iframe {
-    max-height: 220px;
+    width: 100%;
+    max-height: 200px;
     object-fit: contain;
-    transition: max-height 0.25s ease;
+    transition: max-height 0.2s ease;
+    display: block;
 }
 
-/* 文字入力中（is-typing）の省スペース・固定上部表示モード */
+/* フォーム専用スクロールエリア（独立してスクロール） */
+#view-horse .form-scroll-area {
+    flex: 1 1 auto;
+    height: auto !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    padding: 12px 14px;
+    padding-bottom: 220px !important; /* キーボード出現時でも最下部まで見渡せる十分な余白 */
+}
+
+/* ============================================================
+   文字入力中（is-typing）モード：
+   動画を上部にスリム固定し、入力欄の視界を最大限確保！
+   ============================================================ */
+#view-horse.is-typing .glass-header {
+    padding: 4px 12px !important;
+    min-height: 38px !important;
+}
+#view-horse.is-typing .header-title-container h2 {
+    font-size: 13px !important;
+}
 #view-horse.is-typing .fixed-media-area {
-    padding: 4px 10px 4px 10px;
+    padding: 4px 10px 4px 10px !important;
+    background: #090d16 !important;
 }
 #view-horse.is-typing .tabs-container {
-    margin-bottom: 4px;
+    display: none !important; /* 入力中は走前タブを非表示にし動画高さを死守 */
 }
 #view-horse.is-typing .video-container {
-    max-height: 130px;
+    max-height: 115px !important; /* 115pxのミニプレイヤー化 */
+    border-radius: 6px;
 }
 #view-horse.is-typing #video-slot video,
 #view-horse.is-typing #video-slot iframe {
-    max-height: 130px;
+    max-height: 115px !important;
 }
 #view-horse.is-typing .video-actions {
-    padding: 3px 6px;
-    font-size: 10px;
+    display: none !important; /* 入力中はDLボタン等を隠してスペース最大化 */
 }
 #view-horse.is-typing .past-race-rpci-bar {
-    margin-top: 4px;
-    padding: 3px 6px;
-    font-size: 10px;
+    margin-top: 3px !important;
+    padding: 2px 6px !important;
+    font-size: 10px !important;
 }
 
 /* ============================================================
