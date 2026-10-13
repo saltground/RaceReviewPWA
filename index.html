@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Race Review & Payoffs</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261013_3">
+    <link rel="stylesheet" href="style.css?v=20261013_5">
 </head>
 <body>
     <div id="app-container">
@@ -92,7 +92,16 @@
             <main class="scroll-area form-scroll-area">
                 <!-- Evaluation Form -->
                 <div class="evaluation-form glass-panel">
-                    <h3>レース回顧</h3>
+                    <!-- フォーカス入力時ナビゲーションバー（動画再生中の文字入力時のみ表示） -->
+                    <div id="input-focus-toolbar" class="input-focus-toolbar" style="display:none;">
+                        <span id="input-focus-title" class="input-focus-title">🏁 スタート</span>
+                        <div class="input-focus-actions">
+                            <button type="button" class="ift-btn" onclick="navFocusedField(-1)">◀ 前へ</button>
+                            <button type="button" class="ift-btn" onclick="navFocusedField(1)">次へ ▶</button>
+                            <button type="button" class="ift-btn close" onclick="blurFocusedField()">完了 ✓</button>
+                        </div>
+                    </div>
+                    <h3 id="eval-form-heading">レース回顧</h3>
                     <div class="input-group">
                         <label>スタート</label>
                         <input type="text" id="eval-start" placeholder="出遅れ、好発など...">
@@ -458,11 +467,11 @@
     <script>
         window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
     </script>
-    <script src="course_standards_data.js?v=20261013_3"></script>
-    <script src="race_reviews_data.js?v=20261013_3"></script>
-    <script src="race_results_data.js?v=20261013_3"></script>
-    <script src="app.js?v=20261013_3"></script>
-    <script src="bias_logic.js?v=20261013_3"></script>
-    <script src="results_logic.js?v=20261013_3"></script>
+    <script src="course_standards_data.js?v=20261013_4"></script>
+    <script src="race_reviews_data.js?v=20261013_4"></script>
+    <script src="race_results_data.js?v=20261013_4"></script>
+    <script src="app.js?v=20261013_5"></script>
+    <script src="bias_logic.js?v=20261013_4"></script>
+    <script src="results_logic.js?v=20261013_4"></script>
 </body>
 </html>

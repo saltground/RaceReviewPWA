@@ -637,7 +637,80 @@ function renderPastRaceRpcibar(pciData, nbId, prStr) {
 }
 
 /**
+ * 回顧フォームの入力フィールド定義
+ */
+const EVAL_FIELDS = [
+    { id: 'eval-start', label: '🏁 スタート' },
+    { id: 'eval-corner', label: '🔄 コーナリング' },
+    { id: 'eval-straight', label: '⚡ 直線' },
+    { id: 'eval-plus', label: '👍 プラス評価' },
+    { id: 'eval-minus', label: '⚠️ マイナス評価' },
+    { id: 'eval-summary', label: '📝 総評' }
+];
+
+/**
+ * フォーカス中の入力欄を切り替え・ナビゲーション
+ */
+function setActiveReviewField(targetEl) {
+    if (!targetEl) return;
+    const viewHorse = document.getElementById('view-horse');
+    const titleEl = document.getElementById('input-focus-title');
+    const fieldConfig = EVAL_FIELDS.find(f => f.id === targetEl.id);
+
+    // 全ての input-group から is-active-field を除去
+    document.querySelectorAll('#view-horse .evaluation-form .input-group').forEach(grp => {
+        grp.classList.remove('is-active-field');
+    });
+
+    const parentGroup = targetEl.closest('.input-group');
+    if (parentGroup) {
+        parentGroup.classList.add('is-active-field');
+    }
+
+    if (titleEl && fieldConfig) {
+        titleEl.textContent = fieldConfig.label;
+    }
+}
+
+/**
+ * 前へ / 次へ ボタンによる入力項目の切り替え
+ * @param {number} delta -1: 前の項目, +1: 次の項目
+ */
+function navFocusedField(delta) {
+    const activeEl = document.activeElement;
+    let currentIndex = EVAL_FIELDS.findIndex(f => f.id === (activeEl ? activeEl.id : ''));
+    if (currentIndex === -1) currentIndex = 0;
+
+    const nextIndex = (currentIndex + delta + EVAL_FIELDS.length) % EVAL_FIELDS.length;
+    const nextFieldEl = document.getElementById(EVAL_FIELDS[nextIndex].id);
+    if (nextFieldEl) {
+        setActiveReviewField(nextFieldEl);
+        nextFieldEl.focus();
+    }
+}
+window.navFocusedField = navFocusedField;
+
+/**
+ * 完了ボタン：フォーカス解除して全項目一覧表示へ復帰
+ */
+function blurFocusedField() {
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        document.activeElement.blur();
+    }
+    const viewHorse = document.getElementById('view-horse');
+    if (viewHorse) {
+        viewHorse.classList.remove('is-typing');
+        document.querySelectorAll('#view-horse .evaluation-form .input-group').forEach(grp => {
+            grp.classList.remove('is-active-field');
+        });
+        if (viewHorse.style.height) viewHorse.style.height = '';
+    }
+}
+window.blurFocusedField = blurFocusedField;
+
+/**
  * スマホ文字入力時の動画常時上部固定 & VisualViewport連動制御
+ * 大画面動画（フルサイズ）を維持し、フォーカス中項目のみを表示
  */
 function setupTypingVideoLock() {
     const viewHorse = document.getElementById('view-horse');
@@ -646,26 +719,19 @@ function setupTypingVideoLock() {
 
     let isKeyboardOpen = false;
 
-    // 1. フォーカス時：即座に is-typing モードを適用
+    // 1. フォーカス時：即座に is-typing モードを適用 & 該当項目のみアクティブ化
     viewHorse.addEventListener('focusin', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
             isKeyboardOpen = true;
+            setActiveReviewField(e.target);
             viewHorse.classList.add('is-typing');
 
             // ブラウザの強制ウィンドウスクロールを即時リセット
             window.scrollTo(0, 0);
 
-            // フォーカスされた入力欄をフォームコンテナ内でスムーズに見える位置へスクロール
             setTimeout(() => {
                 window.scrollTo(0, 0);
-                if (formScrollArea && e.target) {
-                    const rect = e.target.getBoundingClientRect();
-                    const containerRect = formScrollArea.getBoundingClientRect();
-                    if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
-                        e.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    }
-                }
-            }, 80);
+            }, 50);
         }
     });
 
@@ -676,6 +742,9 @@ function setupTypingVideoLock() {
             if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA')) {
                 isKeyboardOpen = false;
                 viewHorse.classList.remove('is-typing');
+                document.querySelectorAll('#view-horse .evaluation-form .input-group').forEach(grp => {
+                    grp.classList.remove('is-active-field');
+                });
                 if (viewHorse.style.height) viewHorse.style.height = '';
             }
         }, 150);
