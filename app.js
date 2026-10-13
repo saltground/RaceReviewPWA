@@ -41,6 +41,21 @@ window.onload = async function () {
         syncDataFromDrive();
     });
     document.getElementById('save-btn').addEventListener('click', saveCurrentReview);
+
+    // 文字入力中も動画を常に上部で見れるようにするフォーカス制御
+    const evalForm = document.querySelector('.evaluation-form');
+    const viewHorse = document.getElementById('view-horse');
+    if (evalForm && viewHorse) {
+        evalForm.addEventListener('focusin', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                viewHorse.classList.add('is-typing');
+                window.scrollTo(0, 0);
+            }
+        });
+        evalForm.addEventListener('focusout', () => {
+            viewHorse.classList.remove('is-typing');
+        });
+    }
 };
 
 // ============================================================
@@ -480,6 +495,105 @@ async function saveCurrentReview() {
 // ============================================================
 //  動画再生（IndexedDBキャッシュ優先）
 // ============================================================
+
+/**
+ * 過去レースのRPCIおよびペース情報を取得
+ */
+function getPastRacePciData(nbId, prStr = '') {
+    let raceId = (nbId && nbId !== '動画なし') ? nbId : '';
+    if (!raceId && prStr) {
+        const lines = prStr.split('<br>');
+        if (lines[0] && lines[0].length >= 10 && lines[0] !== '動画なし') {
+            raceId = lines[0];
+        }
+    }
+
+    // 1. RACE_RESULTS_DATA から検索
+    if (raceId && window.RACE_RESULTS_DATA && window.RACE_RESULTS_DATA.races) {
+        const found = window.RACE_RESULTS_DATA.races.find(r => r.id === raceId);
+        if (found) {
+            return {
+                id: found.id,
+                name: found.name,
+                rpci: found.rpci,
+                standard_rpci: found.standard_rpci,
+                pci_diff: found.pci_diff,
+                pace_category: found.pace_category || found.pace_index,
+                pace_label: found.pace_label,
+                pace_f3f_l3f: found.pace_f3f_l3f
+            };
+        }
+    }
+
+    // 2. TRACK_BIAS_DATA.race_paces から検索
+    if (raceId && window.TRACK_BIAS_DATA && window.TRACK_BIAS_DATA.race_paces) {
+        const pObj = window.TRACK_BIAS_DATA.race_paces[raceId];
+        if (pObj && pObj.pace && pObj.pace !== 'Unknown' && pObj.pace !== 'NoLap') {
+            return {
+                id: raceId,
+                name: '',
+                rpci: null,
+                standard_rpci: null,
+                pci_diff: null,
+                pace_category: pObj.pace,
+                pace_label: pObj.pace === 'H' ? 'ハイペース / 前傾' : (pObj.pace === 'S' ? 'スローペース / 後傾' : 'ミドルペース / 平均'),
+                pace_f3f_l3f: pObj.f3f_l3f
+            };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 過去走RPCIバーの描画
+ */
+function renderPastRaceRpcibar(pciData, nbId, prStr) {
+    const bar = document.getElementById('past-race-rpci-bar');
+    if (!bar) return;
+
+    if (!pciData) {
+        const badge = getPaceBadgeForRace(nbId, prStr);
+        if (badge) {
+            bar.style.display = 'flex';
+            bar.innerHTML = `<span class="pr-rpci-sub">展開傾向:</span> <span class="pr-rpci-pace">${badge}</span>`;
+        } else {
+            bar.style.display = 'none';
+        }
+        return;
+    }
+
+    bar.style.display = 'flex';
+    const diffSign = pciData.pci_diff !== null && pciData.pci_diff !== undefined
+        ? (pciData.pci_diff > 0 ? `+${pciData.pci_diff}` : `${pciData.pci_diff}`)
+        : '';
+    const diffCls = pciData.pci_diff > 0 ? 'rpci-diff-plus' : (pciData.pci_diff < 0 ? 'rpci-diff-minus' : 'rpci-diff-neutral');
+    const badgeHtml = getPaceBadgeHtml(pciData.pace_category, pciData.pace_f3f_l3f, diffSign);
+
+    let html = '';
+    if (pciData.rpci !== null && pciData.rpci !== undefined) {
+        html += `
+        <div class="pr-rpci-main">
+            <span>RPCI: <span class="pr-rpci-val">${pciData.rpci}</span></span>
+            <span class="pr-rpci-sub">(基準: ${pciData.standard_rpci || '-'} / 差: <span class="${diffCls}"><strong>${diffSign}</strong></span>)</span>
+        </div>`;
+    } else {
+        html += `<div class="pr-rpci-main"><span class="pr-rpci-sub">ペース判定:</span></div>`;
+    }
+
+    const labelStr = pciData.pace_label ? `<span>${pciData.pace_label}</span>` : '';
+    const f3fStr = pciData.pace_f3f_l3f ? `<span class="pr-rpci-sub">3F: ${pciData.pace_f3f_l3f}</span>` : '';
+
+    html += `
+    <div class="pr-rpci-pace">
+        ${badgeHtml}
+        ${labelStr}
+        ${f3fStr}
+    </div>`;
+
+    bar.innerHTML = html;
+}
+
 async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     activePastRaceIndex = tabIndex;
     activeNbId = nbId;
@@ -488,26 +602,26 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     }
     loadReviewToForm();
 
-    // 選択タブの過去走における馬番を lines[5](Data03) から抽出して表示
-    // Data03 実フォーマット: "N頭 M番 人 騎手名 斤量" ← 枠番なし、馬番のみ
+    // 選択タブの過去走における馬番 & RPCI情報を抽出して表示
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
     const metaEl = document.getElementById('horse-meta-info');
     const prStr = (horse && horse.past_races && horse.past_races[tabIndex]) ? horse.past_races[tabIndex] : '';
-    const paceBadge = getPaceBadgeForRace(nbId, prStr);
+    const pciData = getPastRacePciData(nbId, prStr);
+    renderPastRaceRpcibar(pciData, nbId, prStr);
 
+    const paceBadge = pciData ? getPaceBadgeHtml(pciData.pace_category, pciData.pace_f3f_l3f, pciData.pci_diff) : getPaceBadgeForRace(nbId, prStr);
+    const rpciShort = (pciData && pciData.rpci !== null) ? `RPCI ${pciData.rpci}` : '';
+
+    let mBanStr = '';
     if (horse && horse.past_races && horse.past_races[tabIndex]) {
         const prLines = horse.past_races[tabIndex].split('<br>');
         const horseInfoText = prLines[5] || '';
-        // U+756A = 「番」→ 「N番」のNを馬番として取得
         const mBan = horseInfoText.match(/(\d+)番/);
-        if (mBan) {
-            metaEl.innerHTML = `${mBan[1]}番 ${paceBadge}`;
-        } else {
-            metaEl.innerHTML = paceBadge;
-        }
-    } else {
-        metaEl.innerHTML = paceBadge;
+        if (mBan) mBanStr = `${mBan[1]}番`;
     }
+
+    const metaParts = [mBanStr, rpciShort, paceBadge].filter(Boolean);
+    metaEl.innerHTML = metaParts.join(' ');
 
     if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
 
@@ -521,7 +635,7 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     const cached = await localforage.getItem(`video_${nbId}`);
     if (cached) {
         currentBlobUrl = URL.createObjectURL(cached);
-        slot.innerHTML = `<video controls playsinline><source src="${currentBlobUrl}" type="video/mp4"></video>`;
+        slot.innerHTML = `<video controls playsinline webkit-playsinline preload="metadata"><source src="${currentBlobUrl}" type="video/mp4"></video>`;
         actions.style.display = 'flex';
         updateVideoBadge(true, cached.size);
         document.getElementById('btn-dl-video').style.display = 'none';
@@ -547,7 +661,7 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
 
         const blob = await res.blob();
         currentBlobUrl = URL.createObjectURL(blob);
-        slot.innerHTML = `<video controls playsinline><source src="${currentBlobUrl}" type="video/mp4"></video>`;
+        slot.innerHTML = `<video controls playsinline webkit-playsinline preload="metadata"><source src="${currentBlobUrl}" type="video/mp4"></video>`;
         actions.style.display = 'flex';
         updateVideoBadge(false, blob.size);
         document.getElementById('btn-dl-video').style.display = '';

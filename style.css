@@ -1419,3 +1419,97 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 .tab.has-review.active {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.3)) !important;
 }
+
+/* ============================================================
+   動画 & メディアエリア固定（文字入力中も常時上部表示）
+   ============================================================ */
+#view-horse {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.fixed-media-area {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    flex-shrink: 0;
+    padding: 10px 14px 6px 14px;
+    background: var(--bg-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: all 0.25s ease;
+}
+
+/* 動画サイズ（通常時） */
+.video-container {
+    max-height: 220px;
+    transition: max-height 0.25s ease;
+}
+#video-slot video, #video-slot iframe {
+    max-height: 220px;
+    object-fit: contain;
+    transition: max-height 0.25s ease;
+}
+
+/* 文字入力中（is-typing）の省スペース・固定上部表示モード */
+#view-horse.is-typing .fixed-media-area {
+    padding: 4px 10px 4px 10px;
+}
+#view-horse.is-typing .tabs-container {
+    margin-bottom: 4px;
+}
+#view-horse.is-typing .video-container {
+    max-height: 130px;
+}
+#view-horse.is-typing #video-slot video,
+#view-horse.is-typing #video-slot iframe {
+    max-height: 130px;
+}
+#view-horse.is-typing .video-actions {
+    padding: 3px 6px;
+    font-size: 10px;
+}
+#view-horse.is-typing .past-race-rpci-bar {
+    margin-top: 4px;
+    padding: 3px 6px;
+    font-size: 10px;
+}
+
+/* ============================================================
+   過去走 RPCI & ペース情報カード
+   ============================================================ */
+.past-race-rpci-bar {
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    font-size: 11px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.pr-rpci-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+.pr-rpci-val {
+    color: #38bdf8;
+    font-weight: 700;
+    font-size: 13px;
+}
+.pr-rpci-sub {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+.pr-rpci-pace {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}

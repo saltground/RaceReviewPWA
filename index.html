@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Race Review & Payoffs</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261013_1">
+    <link rel="stylesheet" href="style.css?v=20261013_2">
 </head>
 <body>
     <div id="app-container">
@@ -84,6 +84,8 @@
                         <button id="btn-refresh-video" class="vact-btn" onclick="reloadCurrentVideo()">☁️ 再取得</button>
                     </div>
                 </div>
+                <!-- 過去走 RPCI & ペース情報カード -->
+                <div id="past-race-rpci-bar" class="past-race-rpci-bar"></div>
             </div>
 
             <!-- スクロール可能な評価フォームエリア -->
@@ -456,10 +458,10 @@
     <script>
         window.TRACK_BIAS_DATA = { winning_time: {}, frame_stats: {}, cushion: {}, weather: {} };
     </script>
-    <script src="race_reviews_data.js?v=20261013_1"></script>
-    <script src="race_results_data.js?v=20261013_1"></script>
-    <script src="app.js?v=20261013_1"></script>
-    <script src="bias_logic.js?v=20261013_1"></script>
-    <script src="results_logic.js?v=20261013_1"></script>
+    <script src="race_reviews_data.js?v=20261013_2"></script>
+    <script src="race_results_data.js?v=20261013_2"></script>
+    <script src="app.js?v=20261013_2"></script>
+    <script src="bias_logic.js?v=20261013_2"></script>
+    <script src="results_logic.js?v=20261013_2"></script>
 </body>
 </html>
