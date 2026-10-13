@@ -19,6 +19,9 @@ let currentBlobUrl = null;
 //  初期化
 // ============================================================
 window.onload = async function () {
+    // 初期ローカルデータおよび同梱レビューデータのロード（ログイン状態にかかわらず即時実行）
+    await loadLocalData();
+
     if (window.google && google.accounts) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
@@ -78,12 +81,14 @@ async function syncDataFromDrive() {
             await localforage.setItem('raceData', json);
         }
 
-        // 回顧データ双方向同期
-        const jsonFile = await findDriveFile('race_reviews.json', DRIVE_FOLDER_ID);
+        // 回顧データ双方向同期（マイドライブ全体から最新更新のファイルを最優先で検索）
+        let jsonFile = await findDriveFile('race_reviews.json');
+        if (!jsonFile && DRIVE_FOLDER_ID) {
+            jsonFile = await findDriveFile('race_reviews.json', DRIVE_FOLDER_ID);
+        }
         let driveReviews = { reviews: {} };
-        let driveFileId = null;
+        let driveFileId = jsonFile ? jsonFile.id : null;
         if (jsonFile) {
-            driveFileId = jsonFile.id;
             const text = await fetchDriveFileContent(driveFileId);
             try { driveReviews = JSON.parse(text); } catch (e) {}
         }
@@ -135,6 +140,10 @@ function mergeReviews(local, remote) {
 }
 
 async function uploadReviewsToDrive(fileId, data) {
+    if (!fileId) {
+        const existing = await findDriveFile('race_reviews.json');
+        if (existing) fileId = existing.id;
+    }
     const boundary = 'rr_boundary';
     const meta = { name: 'race_reviews.json', mimeType: 'application/json' };
     const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--`;
@@ -154,8 +163,15 @@ async function uploadReviewsToDrive(fileId, data) {
 async function loadLocalData() {
     const data = await localforage.getItem('raceData');
     if (data) { currentRaceData = data; renderDashboard(); }
-    const reviews = await localforage.getItem('reviewsData');
-    if (reviews) reviewsData = reviews;
+
+    let reviews = await localforage.getItem('reviewsData') || { reviews: {} };
+    // 同梱の初期レビューデータ (INITIAL_REVIEWS_DATA) を確実にマージ
+    if (window.INITIAL_REVIEWS_DATA && window.INITIAL_REVIEWS_DATA.reviews) {
+        reviews = mergeReviews(reviews, window.INITIAL_REVIEWS_DATA);
+        await localforage.setItem('reviewsData', reviews);
+    }
+    reviewsData = reviews;
+
     const bias = await localforage.getItem('trackBiasData');
     if (bias) window.TRACK_BIAS_DATA = bias;
 
@@ -257,12 +273,16 @@ function openRace(raceId) {
     document.getElementById('race-title').textContent = `${info.venue}${info.race_num}R: ${info.race_name}`;
     let html = '';
     (info.horses || []).forEach((h, i) => {
+        const revCount = countReviewsForHorse(h);
+        const hasReview = revCount > 0;
+        const btnClass = hasReview ? 'btn-reviewed' : '';
+        const btnText = hasReview ? `📝 回顧済 (${revCount}件)` : '回顧する';
         html += `<div class="glass-panel" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="openHorse(${i})">
             <div>
                 <div style="font-size:12px;color:var(--text-muted);">馬番: ${h.horse_number}</div>
                 <div style="font-weight:bold;font-size:16px;">${h.horse_name}</div>
             </div>
-            <div style="font-size:12px;background:var(--primary-color);padding:4px 8px;border-radius:12px;">回顧する</div>
+            <div class="${btnClass}" style="font-size:12px;background:var(--primary-color);padding:5px 10px;border-radius:12px;">${btnText}</div>
         </div>`;
     });
     document.getElementById('horse-list-container').innerHTML = html;
@@ -289,7 +309,10 @@ function openHorse(index) {
             const raceName = lines[4] || '';
             const safeId = prId || '動画なし';
             const paceBadge = getPaceBadgeForRace(prId, pr_str);
-            tabsHtml += `<button class="tab ${i===0?'active':''}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'} ${paceBadge}</button>`;
+            const foundRev = findReviewForHorseTab(horse, i, prId);
+            const revIcon = foundRev ? ' 📝' : '';
+            const revClass = foundRev ? 'has-review' : '';
+            tabsHtml += `<button class="tab ${i===0?'active':''} ${revClass}" id="tab-${i}" onclick="selectPastRace(${i},'${safeId}')">${i+1}走前: ${raceName.substring(0,6) || '---'}${revIcon} ${paceBadge}</button>`;
         });
         // タブHTMLをDOMに反映してから最初のタブを選択する
         tabsContainer.innerHTML = tabsHtml;
@@ -322,32 +345,111 @@ async function updateTabCacheDots(horse) {
 }
 
 // ============================================================
-//  回顧データ読み書き
+//  回顧データ読み書き & フォールバック検索
 // ============================================================
+
+/**
+ * 対象馬・対象タブに対する回顧キー候補を優先度順に生成
+ */
+function getReviewKeyCandidates(horse, tabIndex, nbId) {
+    const candidates = [];
+    if (!horse) return candidates;
+    const hName = horse.horse_name;
+
+    // 1. 新形式: 回顧対象の過去走レースID + 馬名 (例: 202605020909_イクシード)
+    if (nbId && nbId !== '動画なし') {
+        candidates.push(`${nbId}_${hName}`);
+    }
+    if (horse.past_races && horse.past_races[tabIndex]) {
+        const prId = horse.past_races[tabIndex].split('<br>')[0];
+        if (prId && prId !== '動画なし' && !candidates.includes(`${prId}_${hName}`)) {
+            candidates.push(`${prId}_${hName}`);
+        }
+    }
+
+    // 2. 旧形式: 出走レースID + 馬名 + タブ番号 (例: 202605020909_イクシード_0)
+    if (activeRaceId) {
+        candidates.push(`${activeRaceId}_${hName}_${tabIndex}`);
+    }
+
+    // 3. 動画なし・汎用フォールバック
+    candidates.push(`${hName}_${tabIndex}`);
+
+    return candidates;
+}
+
+/**
+ * 対象馬・対象タブに対応する回顧オブジェクトを検索
+ */
+function findReviewForHorseTab(horse, tabIndex, nbId) {
+    if (!reviewsData || !reviewsData.reviews) return null;
+    const candidates = getReviewKeyCandidates(horse, tabIndex, nbId);
+    for (const key of candidates) {
+        const r = reviewsData.reviews[key];
+        if (r && (r.summary || r.start || r.corner || r.straight || r.plus || r.minus)) {
+            return { review: r, matchedKey: key };
+        }
+    }
+    return null;
+}
+
+/**
+ * 馬全体の回顧済み件数をカウント
+ */
+function countReviewsForHorse(horse) {
+    if (!horse || !horse.past_races) return 0;
+    let count = 0;
+    for (let i = 0; i < Math.min(horse.past_races.length, 5); i++) {
+        const prId = horse.past_races[i].split('<br>')[0];
+        if (findReviewForHorseTab(horse, i, prId)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/**
+ * 現在選択中の過去走の正規レビュー保存キー
+ */
 function getReviewKey() {
-    if (activeHorseIndex === null || !activeNbId || activeNbId === '動画なし') return null;
+    if (activeHorseIndex === null || !currentRaceData || !currentRaceData[activeRaceId]) return null;
     const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
-    // キー = 「回顧対象の過去走レースID」+「馬名」
-    // → 週をまたいでも同じ過去走を参照すれば同じキーになり、回顧が引き継がれる
-    return `${activeNbId}_${horse.horse_name}`;
+    if (activeNbId && activeNbId !== '動画なし') {
+        return `${activeNbId}_${horse.horse_name}`;
+    }
+    if (horse.past_races && horse.past_races[activePastRaceIndex]) {
+        const prId = horse.past_races[activePastRaceIndex].split('<br>')[0];
+        if (prId && prId !== '動画なし') return `${prId}_${horse.horse_name}`;
+    }
+    return `${activeRaceId}_${horse.horse_name}_${activePastRaceIndex}`;
 }
 
 function loadReviewToForm() {
-    const key = getReviewKey();
-    if (!key) return;
-    const r = reviewsData.reviews[key] || {};
+    if (activeHorseIndex === null || !currentRaceData || !currentRaceData[activeRaceId]) return;
+    const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
+    const found = findReviewForHorseTab(horse, activePastRaceIndex, activeNbId);
+    const r = found ? found.review : {};
+
     document.getElementById('eval-start').value    = r.start    || '';
     document.getElementById('eval-corner').value   = r.corner   || '';
     document.getElementById('eval-straight').value = r.straight || '';
     document.getElementById('eval-plus').value     = r.plus     || '';
     document.getElementById('eval-minus').value    = r.minus    || '';
     document.getElementById('eval-summary').value  = r.summary  || '';
+
+    // 旧キーで見つかった場合は、正規キーにも自動コピーして移行
+    if (found && found.matchedKey !== getReviewKey()) {
+        const canonicalKey = getReviewKey();
+        if (canonicalKey) {
+            reviewsData.reviews[canonicalKey] = { ...r };
+        }
+    }
 }
 
 async function saveCurrentReview() {
     const key = getReviewKey();
     if (!key) return;
-    reviewsData.reviews[key] = {
+    const reviewObj = {
         start:    document.getElementById('eval-start').value,
         corner:   document.getElementById('eval-corner').value,
         straight: document.getElementById('eval-straight').value,
@@ -356,8 +458,23 @@ async function saveCurrentReview() {
         summary:  document.getElementById('eval-summary').value,
         updatedAt: Date.now()
     };
+    reviewsData.reviews[key] = reviewObj;
+
+    // 旧形式キーにも互換性のためバックアップ保存
+    if (activeRaceId && activeHorseIndex !== null) {
+        const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
+        const oldKey = `${activeRaceId}_${horse.horse_name}_${activePastRaceIndex}`;
+        reviewsData.reviews[oldKey] = { ...reviewObj };
+    }
+
     await localforage.setItem('reviewsData', reviewsData);
     showToast('✅ 回顧を保存しました');
+
+    // タブの回顧アイコンを即時更新
+    const curTab = document.getElementById(`tab-${activePastRaceIndex}`);
+    if (curTab && !curTab.classList.contains('has-review')) {
+        curTab.classList.add('has-review');
+    }
 }
 
 // ============================================================
@@ -636,7 +753,7 @@ async function findDriveFile(name, folderId) {
     let qStr = `name='${name}' and trashed=false`;
     if (folderId) qStr += ` and '${folderId}' in parents`;
     const q = encodeURIComponent(qStr);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`,
         { headers: { 'Authorization': `Bearer ${accessToken}` } });
     const data = await res.json();
     return (data.files && data.files.length > 0) ? data.files[0] : null;

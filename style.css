@@ -1402,3 +1402,20 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 .rpci-diff-plus { color: #34d399 !important; } /* スロー・後傾 (プラス) */
 .rpci-diff-minus { color: #f87171 !important; } /* ハイ・前傾 (マイナス) */
 .rpci-diff-neutral { color: #38bdf8 !important; } /* 平均 */
+
+/* ============================================================
+   回顧ステータス表示用バッジ・ボタンスタイル
+   ============================================================ */
+.btn-reviewed {
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+.tab.has-review {
+    border: 1px solid rgba(16, 185, 129, 0.7) !important;
+    color: #34d399 !important;
+}
+.tab.has-review.active {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.3)) !important;
+}
