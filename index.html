@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Race Review & Payoffs</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261013_5">
+    <link rel="stylesheet" href="style.css?v=20261014_1">
 </head>
 <body>
     <div id="app-container">
@@ -96,9 +96,9 @@
                     <div id="input-focus-toolbar" class="input-focus-toolbar" style="display:none;">
                         <span id="input-focus-title" class="input-focus-title">🏁 スタート</span>
                         <div class="input-focus-actions">
-                            <button type="button" class="ift-btn" onclick="navFocusedField(-1)">◀ 前へ</button>
-                            <button type="button" class="ift-btn" onclick="navFocusedField(1)">次へ ▶</button>
-                            <button type="button" class="ift-btn close" onclick="blurFocusedField()">完了 ✓</button>
+                            <button type="button" class="ift-btn" onmousedown="event.preventDefault()" onclick="navFocusedField(-1, event)">◀ 前へ</button>
+                            <button type="button" class="ift-btn" onmousedown="event.preventDefault()" onclick="navFocusedField(1, event)">次へ ▶</button>
+                            <button type="button" class="ift-btn close" onmousedown="event.preventDefault()" onclick="blurFocusedField()">完了 ✓</button>
                         </div>
                     </div>
                     <h3 id="eval-form-heading">レース回顧</h3>
@@ -470,7 +470,7 @@
     <script src="course_standards_data.js?v=20261013_4"></script>
     <script src="race_reviews_data.js?v=20261013_4"></script>
     <script src="race_results_data.js?v=20261013_4"></script>
-    <script src="app.js?v=20261013_5"></script>
+    <script src="app.js?v=20261014_1"></script>
     <script src="bias_logic.js?v=20261013_4"></script>
     <script src="results_logic.js?v=20261013_4"></script>
 </body>

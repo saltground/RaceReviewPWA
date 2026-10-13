@@ -649,10 +649,17 @@ const EVAL_FIELDS = [
 ];
 
 /**
+ * 回顧フォームの入力フィールド状態
+ */
+let currentActiveFieldId = 'eval-start';
+let isNavigatingField = false;
+
+/**
  * フォーカス中の入力欄を切り替え・ナビゲーション
  */
 function setActiveReviewField(targetEl) {
     if (!targetEl) return;
+    currentActiveFieldId = targetEl.id;
     const viewHorse = document.getElementById('view-horse');
     const titleEl = document.getElementById('input-focus-title');
     const fieldConfig = EVAL_FIELDS.find(f => f.id === targetEl.id);
@@ -675,18 +682,36 @@ function setActiveReviewField(targetEl) {
 /**
  * 前へ / 次へ ボタンによる入力項目の切り替え
  * @param {number} delta -1: 前の項目, +1: 次の項目
+ * @param {Event} [event] クリックイベント
  */
-function navFocusedField(delta) {
-    const activeEl = document.activeElement;
-    let currentIndex = EVAL_FIELDS.findIndex(f => f.id === (activeEl ? activeEl.id : ''));
+function navFocusedField(delta, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    isNavigatingField = true;
+
+    // 現在のアクティブIDに基づいて次の項目を決定（document.activeElementの喪失に依存しない）
+    let currentIndex = EVAL_FIELDS.findIndex(f => f.id === currentActiveFieldId);
     if (currentIndex === -1) currentIndex = 0;
 
     const nextIndex = (currentIndex + delta + EVAL_FIELDS.length) % EVAL_FIELDS.length;
-    const nextFieldEl = document.getElementById(EVAL_FIELDS[nextIndex].id);
+    currentActiveFieldId = EVAL_FIELDS[nextIndex].id;
+    const nextFieldEl = document.getElementById(currentActiveFieldId);
+
     if (nextFieldEl) {
         setActiveReviewField(nextFieldEl);
-        nextFieldEl.focus();
+        // モバイルでキーボードを維持しながら確実にフォーカス
+        try {
+            nextFieldEl.focus({ preventScroll: true });
+        } catch (_) {
+            nextFieldEl.focus();
+        }
     }
+
+    setTimeout(() => {
+        isNavigatingField = false;
+    }, 200);
 }
 window.navFocusedField = navFocusedField;
 
@@ -694,6 +719,7 @@ window.navFocusedField = navFocusedField;
  * 完了ボタン：フォーカス解除して全項目一覧表示へ復帰
  */
 function blurFocusedField() {
+    isNavigatingField = false;
     if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
         document.activeElement.blur();
     }
@@ -738,6 +764,9 @@ function setupTypingVideoLock() {
     // 2. フォーカス解除時：通常モードへ復帰
     viewHorse.addEventListener('focusout', () => {
         setTimeout(() => {
+            // 前へ/次への移動中はフォーカスアウトによるリセットを防止
+            if (isNavigatingField) return;
+
             const activeEl = document.activeElement;
             if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA')) {
                 isKeyboardOpen = false;
