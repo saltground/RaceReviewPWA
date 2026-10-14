@@ -548,6 +548,23 @@ function getPastRacePciData(nbId, prStr = '') {
         const std = lookupCourseStandard(prStr);
         if (std) {
             pciObj.standard_rpci = std;
+            if (pciObj.rpci !== null && !isNaN(Number(pciObj.rpci))) {
+                pciObj.pci_diff = Number((pciObj.rpci - std).toFixed(1));
+            }
+        }
+    } else if (!pciObj && prStr) {
+        const std = lookupCourseStandard(prStr);
+        if (std) {
+            pciObj = {
+                id: raceId || '',
+                name: '',
+                rpci: null,
+                standard_rpci: std,
+                pci_diff: null,
+                pace_category: '',
+                pace_label: '',
+                pace_f3f_l3f: ''
+            };
         }
     }
 
@@ -559,18 +576,33 @@ function getPastRacePciData(nbId, prStr = '') {
  */
 function lookupCourseStandard(prStr) {
     if (!prStr || !window.COURSE_PCI_STANDARDS) return null;
-    const lines = prStr.split('<br>');
-    const venueKaisai = lines[2] || '';
-    const distText = lines[6] || '';
-    const venueMap = {'東':'東京','中':'中山','阪':'阪神','京':'京都','名':'中京','新':'新潟','福':'福島','小':'小倉','札':'札幌','函':'函館'};
+    const venueMap = {
+        '東京':'東京','中山':'中山','阪神':'阪神','京都':'京都','中京':'中京','新潟':'新潟','福島':'福島','小倉':'小倉','札幌':'札幌','函館':'函館',
+        '東':'東京','中':'中山','阪':'阪神','京':'京都','名':'中京','新':'新潟','福':'福島','小':'小倉','札':'札幌','函':'函館'
+    };
+    
     let vName = '';
-    for (const [ch, name] of Object.entries(venueMap)) {
-        if (venueKaisai.includes(ch)) { vName = name; break; }
+    // 1. 2文字の正式競馬場名
+    for (const [key, name] of Object.entries(venueMap)) {
+        if (key.length === 2 && prStr.includes(key)) {
+            vName = name;
+            break;
+        }
     }
-    const distM = distText.match(/(\d{4})/);
-    const surf = distText.includes('ダ') ? 'ダ' : (distText.includes('芝') ? '芝' : '');
-    if (vName && distM && surf) {
-        const cKey = `${vName}_${surf}${distM[1]}`;
+    // 2. 開催回数付き略称（例: 5東③, 1新④ など）
+    if (!vName) {
+        const mKaisai = prStr.match(/\d+([東中阪京名新福小札函])[\d①-⑫]/);
+        if (mKaisai && venueMap[mKaisai[1]]) {
+            vName = venueMap[mKaisai[1]];
+        }
+    }
+
+    // 3. 芝/ダート/障害 + 距離（例: 芝1600, ダ1800）
+    const mDist = prStr.match(/(芝|ダ|障害|ダート)(\d{3,4})/);
+    if (vName && mDist) {
+        const surf = mDist[1].startsWith('ダ') ? 'ダ' : (mDist[1] === '芝' ? '芝' : '障害');
+        const dist = mDist[2];
+        const cKey = `${vName}_${surf}${dist}`;
         const item = window.COURSE_PCI_STANDARDS[cKey];
         if (item && item.mean_rpci) return item.mean_rpci;
     }
