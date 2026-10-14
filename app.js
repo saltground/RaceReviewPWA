@@ -115,12 +115,10 @@ async function syncDataFromDrive() {
             const text = await fetchDriveFileContent(resultsFile.id);
             try {
                 const driveResults = JSON.parse(text);
-                const curVer = (window.RACE_RESULTS_DATA && window.RACE_RESULTS_DATA.version) ? window.RACE_RESULTS_DATA.version : '';
-                const driveVer = driveResults.version || '';
-                const isDriveValid = driveResults.races && driveResults.races.some(r => r.id === '202505050306' && r.rpci !== null);
-                if (isDriveValid || driveVer >= curVer) {
+                if (isDatasetSuperior(driveResults, window.RACE_RESULTS_DATA)) {
                     window.RACE_RESULTS_DATA = driveResults;
                     await localforage.setItem('raceResultsData', window.RACE_RESULTS_DATA);
+                    console.log('[Drive Sync] Applied superior raceResultsData from Drive');
                 }
             } catch (e) { console.error('results json parse error', e); }
         }
@@ -201,18 +199,11 @@ async function loadLocalData() {
     const resData = await localforage.getItem('raceResultsData');
     const bundledData = window.RACE_RESULTS_DATA;
 
-    // 最新同梱データのバージョン判定
-    const bundledVer = bundledData ? (bundledData.version || '20261015_01') : '';
-    const cachedVer = resData ? (resData.version || '') : '';
-
-    // マスターソアラ3走前(202505050306)のRPCIがキャッシュ内で欠落しているか判定
-    const isCachedObsolete = resData && resData.races && !resData.races.some(r => r.id === '202505050306' && r.rpci !== null && r.rpci !== undefined);
-
-    if (bundledData && (!resData || isCachedObsolete || bundledVer > cachedVer)) {
-        // 最新同梱データで IndexedDB キャッシュを強制上書き更新！
+    // 同梱データがキャッシュより優れている（新しい・データ品質が高い）場合は完全自動で更新
+    if (isDatasetSuperior(bundledData, resData)) {
         window.RACE_RESULTS_DATA = bundledData;
         await localforage.setItem('raceResultsData', bundledData);
-        console.log(`[Cache Migration] raceResultsData updated to ${bundledVer} (obsolete: ${isCachedObsolete})`);
+        console.log(`[Cache Migration] Upgraded raceResultsData to superior bundled dataset (Ver: ${bundledData.version || 'unknown'})`);
     } else if (resData) {
         window.RACE_RESULTS_DATA = resData;
     } else if (bundledData) {
@@ -225,6 +216,67 @@ async function loadLocalData() {
     if (todayVenueEl && todayVenueEl.value && typeof autoFillTodayTrackData === 'function') {
         autoFillTodayTrackData(todayVenueEl.value);
     }
+}
+
+/**
+ * データセット（候補 candidate と 既存 current）の鮮度・品質を普遍的に比較判定
+ * candidate が current よりも新しい、または品質（RPCI補完度・レース数等）が勝っているかを客観的に評価
+ * @param {Object} candidate - 採用を検討する新しいデータセット（例: 最新同梱データ、Driveデータ）
+ * @param {Object} current - 現在キャッシュまたはメモリにある既存データセット
+ * @returns {boolean} true: candidate の方が優れており、更新すべき
+ */
+function isDatasetSuperior(candidate, current) {
+    if (!candidate) return false;
+    if (!current) return true;
+
+    // 1. バージョン文字列の比較（例: '20261015_01' > '20261014_02'）
+    const candidateVer = String(candidate.version || '').trim();
+    const currentVer = String(current.version || '').trim();
+    if (candidateVer && !currentVer) return true; // 既存データにバージョンが付与されていない（旧キャッシュ）
+    if (candidateVer && currentVer && candidateVer > currentVer) return true;
+    if (currentVer && candidateVer && currentVer > candidateVer) return false; // 既存の方が明示的に新しい
+
+    // 2. ビルドタイムスタンプ（ISO 8601等）の比較
+    const candidateTime = candidate.build_time ? new Date(candidate.build_time).getTime() : 0;
+    const currentTime = current.build_time ? new Date(current.build_time).getTime() : 0;
+    if (candidateTime > 0 && currentTime > 0) {
+        if (candidateTime > currentTime) return true;
+        if (currentTime > candidateTime) return false;
+    } else if (candidateTime > 0 && currentTime === 0) {
+        return true;
+    }
+
+    // 3. データ品質・充実度の客観的指標による判定
+    const candRaces = Array.isArray(candidate.races) ? candidate.races : [];
+    const currRaces = Array.isArray(current.races) ? current.races : [];
+
+    // ① RPCI算出・保有レース数の比較（データ補完度の客観的比較）
+    const countValidRpci = (races) => {
+        let cnt = 0;
+        for (let i = 0; i < races.length; i++) {
+            const r = races[i];
+            if (r && r.rpci !== null && r.rpci !== undefined && !isNaN(Number(r.rpci))) {
+                cnt++;
+            }
+        }
+        return cnt;
+    };
+    const candRpciCount = countValidRpci(candRaces);
+    const currRpciCount = countValidRpci(currRaces);
+
+    if (candRpciCount > currRpciCount) return true;
+    if (currRpciCount > candRpciCount) return false;
+
+    // ② 総レース件数の比較
+    if (candRaces.length > currRaces.length) return true;
+    if (currRaces.length > candRaces.length) return false;
+
+    // ③ コース基準（course_standards）の収録数
+    const candStdCount = candidate.course_standards ? Object.keys(candidate.course_standards).length : 0;
+    const currStdCount = current.course_standards ? Object.keys(current.course_standards).length : 0;
+    if (candStdCount > currStdCount) return true;
+
+    return false;
 }
 
 // ============================================================
