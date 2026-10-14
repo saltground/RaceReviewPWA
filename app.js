@@ -114,8 +114,14 @@ async function syncDataFromDrive() {
         if (resultsFile) {
             const text = await fetchDriveFileContent(resultsFile.id);
             try {
-                window.RACE_RESULTS_DATA = JSON.parse(text);
-                await localforage.setItem('raceResultsData', window.RACE_RESULTS_DATA);
+                const driveResults = JSON.parse(text);
+                const curVer = (window.RACE_RESULTS_DATA && window.RACE_RESULTS_DATA.version) ? window.RACE_RESULTS_DATA.version : '';
+                const driveVer = driveResults.version || '';
+                const isDriveValid = driveResults.races && driveResults.races.some(r => r.id === '202505050306' && r.rpci !== null);
+                if (isDriveValid || driveVer >= curVer) {
+                    window.RACE_RESULTS_DATA = driveResults;
+                    await localforage.setItem('raceResultsData', window.RACE_RESULTS_DATA);
+                }
             } catch (e) { console.error('results json parse error', e); }
         }
 
@@ -193,12 +199,25 @@ async function loadLocalData() {
     }
 
     const resData = await localforage.getItem('raceResultsData');
-    // キャッシュに course_standards または rpci が正しく含まれている場合のみ採用。なければ最新同梱データを優先！
-    if (resData && (resData.course_standards || (resData.races && resData.races[0] && 'rpci' in resData.races[0]))) {
+    const bundledData = window.RACE_RESULTS_DATA;
+
+    // 最新同梱データのバージョン判定
+    const bundledVer = bundledData ? (bundledData.version || '20261015_01') : '';
+    const cachedVer = resData ? (resData.version || '') : '';
+
+    // マスターソアラ3走前(202505050306)のRPCIがキャッシュ内で欠落しているか判定
+    const isCachedObsolete = resData && resData.races && !resData.races.some(r => r.id === '202505050306' && r.rpci !== null && r.rpci !== undefined);
+
+    if (bundledData && (!resData || isCachedObsolete || bundledVer > cachedVer)) {
+        // 最新同梱データで IndexedDB キャッシュを強制上書き更新！
+        window.RACE_RESULTS_DATA = bundledData;
+        await localforage.setItem('raceResultsData', bundledData);
+        console.log(`[Cache Migration] raceResultsData updated to ${bundledVer} (obsolete: ${isCachedObsolete})`);
+    } else if (resData) {
         window.RACE_RESULTS_DATA = resData;
-    } else if (window.RACE_RESULTS_DATA) {
-        // 最新の同梱データを IndexedDB に保存して更新
-        await localforage.setItem('raceResultsData', window.RACE_RESULTS_DATA);
+    } else if (bundledData) {
+        window.RACE_RESULTS_DATA = bundledData;
+        await localforage.setItem('raceResultsData', bundledData);
     }
     if (typeof renderPayoffStats === 'function') renderPayoffStats();
     if (typeof onBiasSelectorChange === 'function') onBiasSelectorChange();
