@@ -44,6 +44,30 @@ window.onload = async function () {
 
     // 文字入力中も動画を常に上部で見れるようにするVisualViewport連動制御
     setupTypingVideoLock();
+
+    // PWA Service Worker 登録（バックグラウンドサポート）
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then((reg) => {
+            console.log('[PWA] Service Worker registered:', reg.scope);
+        }).catch((err) => {
+            console.warn('[PWA] Service Worker registration failed:', err);
+        });
+
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'BG_FETCH_VIDEO_SAVED') {
+                const savedNbId = event.data.nbId;
+                showToast(`✅ 動画 (${savedNbId}) のバックグラウンド保存が完了しました`);
+                if (activeNbId === savedNbId) {
+                    updateVideoBadge(true);
+                    const dlBtn = document.getElementById('btn-dl-video');
+                    const delBtn = document.getElementById('btn-del-video');
+                    if (dlBtn) dlBtn.style.display = 'none';
+                    if (delBtn) delBtn.style.display = '';
+                }
+                updateTabCacheDotsIfActive();
+            }
+        });
+    }
 };
 
 // ============================================================
@@ -1005,28 +1029,231 @@ function updateVideoBadge(isCached, size) {
 }
 
 // ============================================================
+//  Screen Wake Lock（バックグラウンド保存中のスリープ防止）
+// ============================================================
+let wakeLockSentinel = null;
+
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator && !wakeLockSentinel) {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', () => {
+                wakeLockSentinel = null;
+            });
+            console.log('[WakeLock] Screen Wake Lock acquired for background download');
+        }
+    } catch (err) {
+        console.warn('[WakeLock] Could not acquire screen wake lock:', err);
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch(() => {});
+        wakeLockSentinel = null;
+        console.log('[WakeLock] Screen Wake Lock released');
+    }
+}
+
+// ============================================================
+//  バックグラウンド・ダウンロードキュー管理
+// ============================================================
+const downloadQueue = [];
+const queueSet = new Set();
+let isQueueProcessing = false;
+let queueTotalCount = 0;
+let queueDoneCount = 0;
+let queueSkippedCount = 0;
+let queueFailedCount = 0;
+
+/**
+ * 現在アクティブな馬のタブキャッシュドットを安全に更新
+ */
+function updateTabCacheDotsIfActive() {
+    if (currentRaceData && activeRaceId && currentRaceData[activeRaceId] && activeHorseIndex !== null) {
+        const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
+        if (horse) updateTabCacheDots(horse);
+    }
+}
+
+/**
+ * ダウンロードキューに動画を追加
+ * @param {string} nbId 過去走ID
+ * @param {string} title 表示用タイトル
+ */
+async function enqueueVideoDownload(nbId, title = '') {
+    if (!nbId || nbId === '動画なし') return;
+    const cached = await localforage.getItem(`video_${nbId}`);
+    if (cached) {
+        showToast(`ℹ️ 既に保存済みです (${nbId})`);
+        return;
+    }
+    if (queueSet.has(nbId)) {
+        showToast(`⏳ 既に保存キューに追加されています (${nbId})`);
+        return;
+    }
+
+    queueSet.add(nbId);
+    downloadQueue.push({ nbId, title: title || nbId });
+    queueTotalCount++;
+
+    showToast(`📥 バックグラウンド保存キューに追加しました (${title || nbId})`);
+    updateDownloadProgressBar();
+
+    if (!isQueueProcessing) {
+        processDownloadQueue();
+    }
+}
+
+/**
+ * プログレスバーの更新
+ */
+function updateDownloadProgressBar(currentTitle = '') {
+    const bar = document.getElementById('dl-progress-bar');
+    const fill = document.getElementById('dl-progress-fill');
+    const text = document.getElementById('dl-progress-text');
+    if (!bar || !fill || !text) return;
+
+    if (queueTotalCount === 0 || (!isQueueProcessing && downloadQueue.length === 0)) {
+        bar.style.display = 'none';
+        fill.style.width = '0%';
+        return;
+    }
+
+    bar.style.display = 'block';
+    const processed = queueDoneCount + queueSkippedCount + queueFailedCount;
+    const pct = queueTotalCount > 0 ? Math.round((processed / queueTotalCount) * 100) : 0;
+    text.textContent = `📥 バックグラウンド保存中... ${processed}/${queueTotalCount}本 (${pct}%)`;
+    fill.style.width = `${pct}%`;
+}
+
+/**
+ * バックグラウンドキューの非同期処理（ノンブロッキング）
+ */
+async function processDownloadQueue() {
+    if (isQueueProcessing) return;
+    isQueueProcessing = true;
+    bulkDownloadStopped = false;
+
+    // ダウンロード中は画面のスリープ（消灯）を防止
+    await requestWakeLock();
+
+    while (downloadQueue.length > 0) {
+        if (bulkDownloadStopped) {
+            downloadQueue.length = 0;
+            queueSet.clear();
+            break;
+        }
+
+        const task = downloadQueue.shift();
+        const { nbId, title } = task;
+        updateDownloadProgressBar(title);
+
+        const result = await executeSingleVideoDownload(nbId);
+        if (result === 'success') {
+            queueDoneCount++;
+        } else if (result === 'skipped') {
+            queueSkippedCount++;
+        } else {
+            queueFailedCount++;
+        }
+
+        // 現在開いている画面の動画ボタン・バッジを即時反映
+        if (activeNbId === nbId) {
+            const savedBlob = await localforage.getItem(`video_${nbId}`);
+            if (savedBlob) {
+                updateVideoBadge(true, savedBlob.size);
+                const dlBtn = document.getElementById('btn-dl-video');
+                const delBtn = document.getElementById('btn-del-video');
+                if (dlBtn) dlBtn.style.display = 'none';
+                if (delBtn) delBtn.style.display = '';
+            }
+        }
+        updateTabCacheDotsIfActive();
+        updateDownloadProgressBar();
+    }
+
+    isQueueProcessing = false;
+    releaseWakeLock();
+
+    const bar = document.getElementById('dl-progress-bar');
+    if (bar) bar.style.display = 'none';
+
+    const stopMsg = bulkDownloadStopped ? '（停止）' : '';
+    showToast(`${stopMsg}バックグラウンド保存完了: ${queueDoneCount}本保存 / ${queueSkippedCount}本スキップ / ${queueFailedCount}本失敗`, 4500);
+
+    // カウンタリセット
+    queueTotalCount = 0;
+    queueDoneCount = 0;
+    queueSkippedCount = 0;
+    queueFailedCount = 0;
+    queueSet.clear();
+    bulkDownloadStopped = false;
+}
+
+/**
+ * 単一動画の実際の取得・保存処理
+ */
+async function executeSingleVideoDownload(nbId) {
+    // 既存キャッシュの再確認
+    const cached = await localforage.getItem(`video_${nbId}`);
+    if (cached) return 'skipped';
+
+    // もし現在再生中のBlobUrlが同一動画なら、最速でローカル保存
+    if (activeNbId === nbId && currentBlobUrl) {
+        try {
+            const res = await fetch(currentBlobUrl);
+            if (res.ok) {
+                const blob = await res.blob();
+                await localforage.setItem(`video_${nbId}`, blob);
+                return 'success';
+            }
+        } catch (_) {}
+    }
+
+    if (!accessToken) {
+        console.warn('[Download] No accessToken available for', nbId);
+        return 'failed';
+    }
+
+    const filename = `${nbId}.mp4`;
+    const year = nbId.substring(0, 4);
+
+    try {
+        const yearFolderId = await getDriveYearFolderId(year);
+        if (!yearFolderId) return 'skipped';
+        const fileId = await getDriveFileId(filename, yearFolderId);
+        if (!fileId) return 'skipped';
+
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (!res.ok) throw new Error(`Drive fetch error ${res.status}`);
+        const blob = await res.blob();
+        await localforage.setItem(`video_${nbId}`, blob);
+        return 'success';
+    } catch (err) {
+        console.error(`[Download] Failed for ${nbId}:`, err);
+        return 'failed';
+    }
+}
+
+// ============================================================
 //  動画個別操作（保存 / 削除 / 再取得）
 // ============================================================
 async function downloadCurrentVideo() {
-    if (!activeNbId || !currentBlobUrl) return;
-    document.getElementById('btn-dl-video').textContent = '保存中...';
-    try {
-        const res = await fetch(currentBlobUrl);
-        const blob = await res.blob();
-        await localforage.setItem(`video_${activeNbId}`, blob);
-        showToast('✅ 動画をローカルに保存しました');
-        updateVideoBadge(true, blob.size);
-        document.getElementById('btn-dl-video').style.display = 'none';
-        document.getElementById('btn-del-video').style.display = '';
-        // タブのドットを更新
-        const tab = document.getElementById(`tab-${activePastRaceIndex}`);
-        if (tab && !tab.querySelector('.cached-dot')) {
-            const dot = document.createElement('span'); dot.className = 'cached-dot'; tab.appendChild(dot);
-        }
-    } catch (e) {
-        showToast('❌ 保存に失敗しました');
+    if (!activeNbId) return;
+    if (!accessToken && !currentBlobUrl) {
+        alert('先にGoogle Driveと連携してください');
+        return;
     }
-    document.getElementById('btn-dl-video').textContent = '📥 保存';
+    const horse = (currentRaceData && activeRaceId && currentRaceData[activeRaceId])
+        ? currentRaceData[activeRaceId].horses[activeHorseIndex] : null;
+    const hName = horse ? horse.horse_name : '';
+    const title = hName ? `${hName}の過去走動画` : activeNbId;
+
+    // バックグラウンド保存キューへ即時追加（操作をブロックしない！）
+    await enqueueVideoDownload(activeNbId, title);
 }
 
 async function deleteCurrentVideo() {
@@ -1034,8 +1261,10 @@ async function deleteCurrentVideo() {
     await localforage.removeItem(`video_${activeNbId}`);
     showToast('🗑️ キャッシュを削除しました');
     updateVideoBadge(false, 0);
-    document.getElementById('btn-dl-video').style.display = '';
-    document.getElementById('btn-del-video').style.display = 'none';
+    const dlBtn = document.getElementById('btn-dl-video');
+    const delBtn = document.getElementById('btn-del-video');
+    if (dlBtn) dlBtn.style.display = '';
+    if (delBtn) delBtn.style.display = 'none';
     const tab = document.getElementById(`tab-${activePastRaceIndex}`);
     if (tab) { const dot = tab.querySelector('.cached-dot'); if (dot) dot.remove(); }
 }
@@ -1046,10 +1275,10 @@ async function reloadCurrentVideo() {
 }
 
 // ============================================================
-//  一括ダウンロード
+//  一括バックグラウンドダウンロード
 // ============================================================
 async function startBulkDownload() {
-    if (!accessToken) { alert('先にログインしてください'); return; }
+    if (!accessToken) { alert('先にGoogle Driveと連携してください'); return; }
     if (!currentRaceData || !activeRaceId) return;
 
     const horses = currentRaceData[activeRaceId].horses || [];
@@ -1059,65 +1288,54 @@ async function startBulkDownload() {
         if (!h.past_races) continue;
         for (let i = 0; i < Math.min(h.past_races.length, 5); i++) {
             const nbId = h.past_races[i].split('<br>')[0];
-            if (nbId && nbId !== '動画なし') targets.push(nbId);
+            if (nbId && nbId !== '動画なし') targets.push({ nbId, horseName: h.horse_name });
         }
     }
     if (targets.length === 0) { showToast('ダウンロード対象がありません'); return; }
 
     // 既存キャッシュを除外してカウント
     const toDownload = [];
-    for (const nbId of targets) {
-        const cached = await localforage.getItem(`video_${nbId}`);
-        if (!cached) toDownload.push(nbId);
+    for (const item of targets) {
+        const cached = await localforage.getItem(`video_${item.nbId}`);
+        if (!cached && !queueSet.has(item.nbId)) {
+            toDownload.push(item);
+        }
+    }
+
+    if (toDownload.length === 0) {
+        showToast('ℹ️ 対象の動画はすべて保存済み、またはキューに追加されています');
+        return;
     }
 
     const totalSize = toDownload.length * 40; // 概算40MB/本
     const confirmed = confirm(
-        `Wi-Fi環境であることを確認してください。\n\nこのレースの動画を一括ダウンロードします。\n対象: ${toDownload.length} 本（既キャッシュ ${targets.length - toDownload.length} 本をスキップ）\n推定: 約${totalSize}MB\n\n開始しますか？`
+        `Wi-Fi環境であることを確認してください。\n\nこのレースの過去走動画を【バックグラウンドで保存】します。\n対象: ${toDownload.length} 本（既キャッシュ ${targets.length - toDownload.length} 本をスキップ）\n推定: 約${totalSize}MB\n\n開始しますか？（保存中もアプリを自由に使えます）`
     );
     if (!confirmed) return;
 
-    bulkDownloadStopped = false;
-    let done = 0, skipped = 0, failed = 0;
-    const bar = document.getElementById('dl-progress-bar');
-    const fill = document.getElementById('dl-progress-fill');
-    const text = document.getElementById('dl-progress-text');
-    bar.style.display = 'block';
-
-    for (const nbId of toDownload) {
-        if (bulkDownloadStopped) break;
-        text.textContent = `ダウンロード中... ${done + skipped}/${toDownload.length}本`;
-        fill.style.width = `${Math.round(((done + skipped) / toDownload.length) * 100)}%`;
-
-        const filename = `${nbId}.mp4`;
-        const year = nbId.substring(0, 4);
-        try {
-            const yearFolderId = await getDriveYearFolderId(year);
-            if (!yearFolderId) { skipped++; continue; }
-            const fileId = await getDriveFileId(filename, yearFolderId);
-            if (!fileId) { skipped++; continue; }
-            const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-                { headers: { 'Authorization': `Bearer ${accessToken}` } });
-            if (!res.ok) throw new Error();
-            const blob = await res.blob();
-            await localforage.setItem(`video_${nbId}`, blob);
-            done++;
-        } catch {
-            failed++;
-        }
+    // キューに全件追加してバックグラウンド処理開始
+    for (const item of toDownload) {
+        queueSet.add(item.nbId);
+        downloadQueue.push({ nbId: item.nbId, title: `${item.horseName}` });
+        queueTotalCount++;
     }
 
-    bar.style.display = 'none';
-    fill.style.width = '0%';
-    const stopMsg = bulkDownloadStopped ? '（停止）' : '';
-    showToast(`${stopMsg}完了: ${done}本保存 / ${skipped}本スキップ / ${failed}本失敗`, 4000);
-    // タブのドット更新
-    const horse = currentRaceData[activeRaceId].horses[activeHorseIndex];
-    if (horse) updateTabCacheDots(horse);
+    showToast(`📥 ${toDownload.length}本の動画をバックグラウンド保存キューに追加しました`);
+    updateDownloadProgressBar();
+
+    if (!isQueueProcessing) {
+        processDownloadQueue();
+    }
 }
 
 function stopBulkDownload() {
     bulkDownloadStopped = true;
+    downloadQueue.length = 0;
+    queueSet.clear();
+    releaseWakeLock();
+    const bar = document.getElementById('dl-progress-bar');
+    if (bar) bar.style.display = 'none';
+    showToast('🛑 バックグラウンド保存を停止しました');
 }
 
 // ============================================================
