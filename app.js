@@ -47,8 +47,9 @@ window.onload = async function () {
 
     // PWA Service Worker 登録（バックグラウンドサポート）
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=20261021_1').then((reg) => {
             console.log('[PWA] Service Worker registered:', reg.scope);
+            reg.update().catch(() => {});
         }).catch((err) => {
             console.warn('[PWA] Service Worker registration failed:', err);
         });
@@ -58,7 +59,7 @@ window.onload = async function () {
                 const savedNbId = event.data.nbId;
                 showToast(`✅ 動画 (${savedNbId}) のバックグラウンド保存が完了しました`);
                 if (activeNbId === savedNbId) {
-                    updateVideoBadge(true);
+                    updateVideoBadge(true, event.data.size || 0);
                     const dlBtn = document.getElementById('btn-dl-video');
                     const delBtn = document.getElementById('btn-del-video');
                     if (dlBtn) dlBtn.style.display = 'none';
@@ -68,6 +69,31 @@ window.onload = async function () {
             }
         });
     }
+
+    // 他アプリからの復帰時（画面再アクティブ時）の自動再同期＆自己修復
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            console.log('[App] Returned from other apps (visible). Resyncing state...');
+            // バックグラウンドで停止したキューがあれば自律再開
+            if (typeof downloadQueue !== 'undefined' && downloadQueue.length > 0 && !isQueueProcessing) {
+                console.log('[App] Resuming unfinished background download queue...');
+                processDownloadQueue();
+            }
+            // 表示中動画のキャッシュ状態を再照合
+            if (activeNbId) {
+                localforage.getItem(`video_${activeNbId}`).then(cached => {
+                    if (cached) {
+                        updateVideoBadge(true, cached.size);
+                        const dlBtn = document.getElementById('btn-dl-video');
+                        const delBtn = document.getElementById('btn-del-video');
+                        if (dlBtn) dlBtn.style.display = 'none';
+                        if (delBtn) delBtn.style.display = '';
+                    }
+                });
+            }
+            updateTabCacheDotsIfActive();
+        }
+    });
 };
 
 // ============================================================
@@ -1056,6 +1082,38 @@ function releaseWakeLock() {
 }
 
 // ============================================================
+//  サイレントオーディオ・キーパー（他アプリ操作中のバックグラウンド維持）
+// ============================================================
+let silentAudioElement = null;
+
+function startBackgroundAudioKeeper() {
+    try {
+        if (!silentAudioElement) {
+            silentAudioElement = new Audio();
+            // 0.1秒の超軽量無音WAVループ再生（iOS Safari / Android のサスペンドを防止）
+            silentAudioElement.src = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+            silentAudioElement.loop = true;
+        }
+        silentAudioElement.play().catch(e => {
+            console.warn('[BgAudio] Silent audio play blocked (needs user gesture):', e);
+        });
+        console.log('[BgAudio] Background Audio Keeper started (prevents background suspension)');
+    } catch (err) {
+        console.warn('[BgAudio] Could not start silent audio:', err);
+    }
+}
+
+function stopBackgroundAudioKeeper() {
+    if (silentAudioElement) {
+        try {
+            silentAudioElement.pause();
+            silentAudioElement.currentTime = 0;
+            console.log('[BgAudio] Background Audio Keeper stopped');
+        } catch (_) {}
+    }
+}
+
+// ============================================================
 //  バックグラウンド・ダウンロードキュー管理
 // ============================================================
 const downloadQueue = [];
@@ -1128,15 +1186,17 @@ function updateDownloadProgressBar(currentTitle = '') {
 }
 
 /**
- * バックグラウンドキューの非同期処理（ノンブロッキング）
+ * バックグラウンドキューの非同期処理（ノンブロッキング＆他アプリ操作中継続）
  */
 async function processDownloadQueue() {
     if (isQueueProcessing) return;
     isQueueProcessing = true;
     bulkDownloadStopped = false;
 
-    // ダウンロード中は画面のスリープ（消灯）を防止
+    // 1. ダウンロード中は画面のスリープ（消灯）を防止
     await requestWakeLock();
+    // 2. 他アプリ操作時のOSサスペンド（一時停止）を防止する無音オーディオを起動
+    startBackgroundAudioKeeper();
 
     while (downloadQueue.length > 0) {
         if (bulkDownloadStopped) {
@@ -1149,8 +1209,8 @@ async function processDownloadQueue() {
         const { nbId, title } = task;
         updateDownloadProgressBar(title);
 
-        const result = await executeSingleVideoDownload(nbId);
-        if (result === 'success') {
+        const result = await executeSingleVideoDownload(nbId, title);
+        if (result === 'success' || result === 'delegated') {
             queueDoneCount++;
         } else if (result === 'skipped') {
             queueSkippedCount++;
@@ -1175,6 +1235,7 @@ async function processDownloadQueue() {
 
     isQueueProcessing = false;
     releaseWakeLock();
+    stopBackgroundAudioKeeper();
 
     const bar = document.getElementById('dl-progress-bar');
     if (bar) bar.style.display = 'none';
@@ -1192,9 +1253,9 @@ async function processDownloadQueue() {
 }
 
 /**
- * 単一動画の実際の取得・保存処理
+ * 単一動画の実際の取得・保存処理（Background Fetch API & サイレントキーパー両対応）
  */
-async function executeSingleVideoDownload(nbId) {
+async function executeSingleVideoDownload(nbId, title = '') {
     // 既存キャッシュの再確認
     const cached = await localforage.getItem(`video_${nbId}`);
     if (cached) return 'skipped';
@@ -1225,7 +1286,33 @@ async function executeSingleVideoDownload(nbId) {
         const fileId = await getDriveFileId(filename, yearFolderId);
         if (!fileId) return 'skipped';
 
-        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+
+        // 1. Android Chrome等の対応環境: OSネイティブ Background Fetch API に委譲
+        if ('serviceWorker' in navigator && 'BackgroundFetchManager' in window) {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                if (reg && reg.backgroundFetch) {
+                    const req = new Request(downloadUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'X-Video-Id': nbId
+                        }
+                    });
+                    await reg.backgroundFetch.fetch(`bgf_${nbId}`, [req], {
+                        title: title || `動画保存: ${nbId}`,
+                        downloadTotal: 40 * 1024 * 1024
+                    });
+                    console.log(`[Download] Delegated ${nbId} to OS Background Fetch API`);
+                    return 'delegated';
+                }
+            } catch (bgErr) {
+                console.warn('[Download] Background Fetch delegation failed, fallback to in-app stream:', bgErr);
+            }
+        }
+
+        // 2. iOS Safari / 非対応環境: サイレントオーディオ再生下での確実なインアプリ取得
+        const res = await fetch(downloadUrl, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         if (!res.ok) throw new Error(`Drive fetch error ${res.status}`);
