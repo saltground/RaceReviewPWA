@@ -237,7 +237,7 @@ async function loadLocalData() {
         const resp = await fetch('track_bias_data.json?v=' + Date.now());
         if (resp.ok) {
             const freshBias = await resp.json();
-            if (freshBias && freshBias.today_track) {
+            if (freshBias && freshBias.today_track && Object.keys(freshBias.today_track).length > 0) {
                 window.TRACK_BIAS_DATA = freshBias;
                 await localforage.setItem('trackBiasData', freshBias);
             }
