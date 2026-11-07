@@ -1630,3 +1630,89 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
     align-items: center;
     gap: 4px;
 }
+
+/* ============================================================
+   レース回顧画面：過去走レース詳細情報カード
+   ============================================================ */
+.past-race-detail-section {
+    margin-top: 14px;
+    margin-bottom: 30px;
+}
+
+.past-race-detail-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 16px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.past-race-detail-header {
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 12px;
+}
+
+.past-race-badge-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.past-race-title-text {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.past-race-meta-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    line-height: 1.5;
+}
+
+.past-race-sub-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #38bdf8;
+    margin: 16px 0 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.5px;
+}
+
+/* 対象馬のハイライト表示 */
+.custom-results-table tr.highlight-horse-row {
+    background: rgba(234, 179, 8, 0.22) !important;
+    border-left: 4px solid #eab308;
+}
+
+.custom-results-table tr.highlight-horse-row td {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.custom-results-table tr.highlight-horse-row .cell-name strong {
+    color: #fde047;
+}
+
+.target-horse-badge {
+    display: inline-block;
+    background: #eab308;
+    color: #0f172a;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+

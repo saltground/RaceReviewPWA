@@ -47,7 +47,7 @@ window.onload = async function () {
 
     // PWA Service Worker 登録（バックグラウンドサポート）
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js?v=20261021_1').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=20261108_0530').then((reg) => {
             console.log('[PWA] Service Worker registered:', reg.scope);
             reg.update().catch(() => {});
         }).catch((err) => {
@@ -249,11 +249,13 @@ async function loadLocalData() {
     const resData = await localforage.getItem('raceResultsData');
     const bundledData = window.RACE_RESULTS_DATA;
 
-    // 同梱データがキャッシュより優れている（新しい・データ品質が高い）場合は完全自動で更新
-    if (isDatasetSuperior(bundledData, resData)) {
+    // 同梱データが存在し、キャッシュとバージョンが異なる、または品質が上回る場合は強制マイグレーション
+    const bundledVer = String(bundledData ? bundledData.version : '');
+    const cachedVer = String(resData ? resData.version : '');
+    if (bundledData && (!resData || cachedVer !== bundledVer || isDatasetSuperior(bundledData, resData))) {
         window.RACE_RESULTS_DATA = bundledData;
         await localforage.setItem('raceResultsData', bundledData);
-        console.log(`[Cache Migration] Upgraded raceResultsData to superior bundled dataset (Ver: ${bundledData.version || 'unknown'})`);
+        console.log(`[Cache Migration] Upgraded raceResultsData to superior bundled dataset (Ver: ${bundledVer || 'unknown'})`);
     } else if (resData) {
         window.RACE_RESULTS_DATA = resData;
     } else if (bundledData) {
@@ -790,6 +792,253 @@ function renderPastRaceRpcibar(pciData, nbId, prStr) {
 }
 
 /**
+ * 12桁レースIDから開催回数と日数を算出・整形する（例: 202405030512 -> 3回東京5日目）
+ * 
+ * @param {string} raceId - 12桁のレースID
+ * @param {string} venue - 会場名（任意。省略時はIDから判定）
+ * @returns {string} 整形された開催文字列（例: '3回東京5日目'）
+ */
+function formatKaisai(raceId, venue = '') {
+    if (!raceId || typeof raceId !== 'string' || raceId.length < 10) return '';
+    const coursesMap = {"01":"札幌","02":"函館","03":"福島","04":"新潟","05":"東京","06":"中山","07":"中京","08":"京都","09":"阪神","10":"小倉"};
+    const vCode = raceId.substring(4, 6);
+    const vName = venue || coursesMap[vCode] || '';
+    if (!vName || !coursesMap[vCode]) return ''; // 中央競馬以外は除外
+    
+    const kaiStr = raceId.substring(6, 8);
+    const dayStr = raceId.substring(8, 10);
+    const kai = parseInt(kaiStr, 10);
+    const day = parseInt(dayStr, 10);
+    
+    if (kai > 0 && day > 0) {
+        return `${kai}回${vName}${day}日目`;
+    }
+    return '';
+}
+
+/**
+ * レース回顧画面下部に過去走のレース詳細情報（基本情報、ラップ推移、全着順、払戻金）を描画する
+ * 
+ * @param {string} raceId - 12桁のレースID
+ * @param {string} targetHorseName - 現在回顧中の対象馬名（着順表でハイライトするため）
+ * @param {string} prStr - 出馬表の過去走文字列（改行区切り）
+ */
+function renderPastRaceDetailInReview(raceId, targetHorseName = '', prStr = '') {
+    const container = document.getElementById('past-race-detail-section');
+    if (!container) return;
+
+    // レースIDの抽出・正規化
+    let validRaceId = (raceId && raceId !== '動画なし') ? String(raceId).trim() : '';
+    if (!validRaceId && prStr) {
+        const lines = prStr.split('<br>');
+        if (lines[0] && lines[0].length >= 10 && lines[0] !== '動画なし') {
+            validRaceId = lines[0].trim();
+        }
+    }
+
+    if (!validRaceId && !prStr) {
+        container.innerHTML = '';
+        return;
+    }
+
+    // 1. 中央競馬データ (RACE_RESULTS_DATA) からレース情報を検索
+    const raceObj = (validRaceId && window.RACE_RESULTS_DATA && window.RACE_RESULTS_DATA.races)
+        ? window.RACE_RESULTS_DATA.races.find(r => r.id === validRaceId)
+        : null;
+
+    if (raceObj) {
+        // --- 中央競馬平地レースの完全詳細を描画 ---
+        const diffStr = raceObj.pci_diff !== null && raceObj.pci_diff !== undefined 
+            ? (raceObj.pci_diff > 0 ? '+' + raceObj.pci_diff : String(raceObj.pci_diff)) 
+            : '';
+        const paceBadge = raceObj.pace_index 
+            ? getPaceBadgeHtml(raceObj.pace_index, raceObj.pace_f3f_l3f, diffStr) 
+            : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(raceObj.id) : '');
+        const cleanWeather = (raceObj.weather || 'Unknown').replace(/&nbsp;|\//g, '').trim() || 'Unknown';
+
+        // ラップタイムテーブル & RPCIメトリクスの生成
+        let lapSectionHtml = '';
+        const lapStr = (raceObj.lap_times || '').trim();
+        const rpciVal = raceObj.rpci !== null && raceObj.rpci !== undefined ? Number(raceObj.rpci).toFixed(1) : null;
+        const stdRpciVal = raceObj.standard_rpci !== null && raceObj.standard_rpci !== undefined ? Number(raceObj.standard_rpci).toFixed(1) : null;
+        const pciDiffVal = raceObj.pci_diff !== null && raceObj.pci_diff !== undefined ? Number(raceObj.pci_diff).toFixed(1) : null;
+
+        if (lapStr || rpciVal !== null) {
+            let rpciBoxesHtml = '';
+            if (rpciVal !== null) {
+                const diffCls = parseFloat(pciDiffVal) > 0 ? 'rpci-diff-plus' : (parseFloat(pciDiffVal) < 0 ? 'rpci-diff-minus' : 'rpci-diff-neutral');
+                const diffSign = parseFloat(pciDiffVal) > 0 ? `+${pciDiffVal}` : pciDiffVal;
+                rpciBoxesHtml = `
+                <div class="rpci-metric-container" style="margin-top:8px;">
+                    <div class="rpci-metric-box">
+                        <div class="label">レースPCI (RPCI)</div>
+                        <div class="value">${rpciVal}</div>
+                    </div>
+                    <div class="rpci-metric-box">
+                        <div class="label">コース基準PCI</div>
+                        <div class="value">${stdRpciVal || '-'}</div>
+                    </div>
+                    <div class="rpci-metric-box">
+                        <div class="label">基準差 (ΔPCI)</div>
+                        <div class="value ${diffCls}">${diffSign}</div>
+                    </div>
+                </div>`;
+            }
+
+            let ths = '';
+            let tds = '';
+            if (lapStr) {
+                const laps = lapStr.split('-').map(s => s.trim()).filter(Boolean);
+                const lapNums = laps.map(l => parseFloat(l));
+                const validNums = lapNums.filter(n => !isNaN(n));
+                const minLap = validNums.length ? Math.min(...validNums) : 999;
+
+                laps.forEach((l, i) => {
+                    const distF = (i + 1) * 200;
+                    const isMin = parseFloat(l) === minLap;
+                    const minCls = isMin ? 'class="cell-fastest-lap"' : '';
+                    ths += `<th>${i + 1}F<br><span style="font-size:9px;color:var(--text-muted);">${distF}m</span></th>`;
+                    tds += `<td ${minCls}><strong>${l}</strong></td>`;
+                });
+            }
+
+            const lapTableHtml = lapStr ? `
+            <div class="table-responsive" style="margin-top:8px;">
+                <table class="custom-lap-table">
+                    <thead><tr>${ths}</tr></thead>
+                    <tbody><tr>${tds}</tr></tbody>
+                </table>
+            </div>` : '';
+
+            lapSectionHtml = `
+            <div class="past-race-sub-title">⏱ ラップタイム推移 & ペース分析</div>
+            ${rpciBoxesHtml}
+            ${lapTableHtml}`;
+        }
+
+        // 全着順テーブルの生成（対象馬をハイライト）
+        let resultsSectionHtml = '';
+        if (raceObj.results && raceObj.results.length > 0) {
+            let rowsHtml = '';
+            raceObj.results.forEach(h => {
+                const isTarget = targetHorseName && h.name && (h.name === targetHorseName || h.name.includes(targetHorseName));
+                const rankCls = h.rank === '1' ? 'rank-1' : (h.rank === '2' ? 'rank-2' : (h.rank === '3' ? 'rank-3' : ''));
+                const highlightCls = isTarget ? 'highlight-horse-row' : rankCls;
+                const targetBadge = isTarget ? '<span class="target-horse-badge">対象馬</span>' : '';
+
+                rowsHtml += `
+                <tr class="${highlightCls}">
+                    <td class="cell-rank">${h.rank}</td>
+                    <td class="cell-post">${h.post}</td>
+                    <td class="cell-num">${h.num}</td>
+                    <td class="cell-name"><strong>${h.name}</strong>${targetBadge}<br><small class="text-muted">${h.sex_age} ${h.weight}kg</small></td>
+                    <td class="cell-jockey">${h.jockey}</td>
+                    <td class="cell-time">${h.time}<br><small class="text-muted">${h.margin}</small></td>
+                    <td class="cell-odds">${h.odds}<br><small class="text-muted">(${h.pop}人気)</small></td>
+                </tr>`;
+            });
+
+            resultsSectionHtml = `
+            <div class="past-race-sub-title">🏁 レース結果 (全着順)</div>
+            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                <table class="custom-results-table">
+                    <thead>
+                        <tr>
+                            <th>着</th>
+                            <th>枠</th>
+                            <th>馬</th>
+                            <th>馬名</th>
+                            <th>騎手</th>
+                            <th>タイム</th>
+                            <th>オッズ</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>`;
+        }
+
+        // 払戻金テーブルの生成
+        let payoffsSectionHtml = '';
+        if (raceObj.payoffs && raceObj.payoffs.length > 0) {
+            const ticketIcons = {
+                "単勝": "🎯", "複勝": "🥉", "枠連": "🔢", "馬連": "🐎",
+                "ワイド": "↔️", "馬単": "🎯", "三連複": "☘️", "三連単": "👑"
+            };
+            let pRows = '';
+            raceObj.payoffs.forEach(p => {
+                const popBadge = p.pop ? `<span class="badge-pop-sm">${p.pop}人気</span>` : '';
+                pRows += `
+                <tr>
+                    <td class="cell-ptype">${ticketIcons[p.type] || ''} ${p.type}</td>
+                    <td class="cell-pcombo"><strong>${p.combo}</strong></td>
+                    <td class="cell-ppay"><strong>${Number(p.pay).toLocaleString()}</strong> 円</td>
+                    <td class="cell-ppop">${popBadge}</td>
+                </tr>`;
+            });
+
+            payoffsSectionHtml = `
+            <div class="past-race-sub-title">💰 払戻金一覧</div>
+            <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+                <table class="custom-payoffs-table">
+                    <thead>
+                        <tr>
+                            <th>券種</th>
+                            <th>組合せ</th>
+                            <th>払戻金</th>
+                            <th>人気</th>
+                        </tr>
+                    </thead>
+                    <tbody>${pRows}</tbody>
+                </table>
+            </div>`;
+        }
+
+        const kaisaiStr = raceObj.kaisai || formatKaisai(raceObj.id, raceObj.venue);
+        const titleKaisai = kaisaiStr ? `${kaisaiStr} ` : `${raceObj.venue}`;
+        container.innerHTML = `
+        <div class="past-race-detail-card">
+            <div class="past-race-detail-header">
+                <div class="past-race-badge-title">
+                    <span class="past-race-title-text">📋 ${titleKaisai}${raceObj.race_num}R ${raceObj.name}</span>
+                    <div>${paceBadge}</div>
+                </div>
+                <div class="past-race-meta-text">
+                    ${raceObj.date || ''}${kaisaiStr ? ' (' + kaisaiStr + ')' : ''} | ${raceObj.surface}${raceObj.distance}m | 天候:${cleanWeather} | 馬場:${raceObj.condition} | ${raceObj.horses_count}頭 | クラス:${raceObj.class || 'OP'}
+                </div>
+            </div>
+            ${lapSectionHtml}
+            ${resultsSectionHtml}
+            ${payoffsSectionHtml}
+        </div>`;
+    } else {
+        // --- 地方・海外競馬または未登録レース（出馬表文字列からのフォールバック表示） ---
+        const lines = prStr ? prStr.split('<br>') : [];
+        const dateVenue = lines[3] || '開催情報なし';
+        const raceTitle = lines[4] || 'レース名不明';
+        const horseDetail = lines[5] || '';
+        const runDetail = lines[6] || '';
+        const cornerPace = lines[7] || '';
+
+        container.innerHTML = `
+        <div class="past-race-detail-card">
+            <div class="past-race-detail-header">
+                <div class="past-race-badge-title">
+                    <span class="past-race-title-text">📋 ${dateVenue} ${raceTitle}</span>
+                </div>
+                <div class="past-race-meta-text">
+                    ${runDetail} ${horseDetail ? '| ' + horseDetail : ''}
+                </div>
+            </div>
+            ${cornerPace ? `<div class="past-race-meta-text" style="margin-top:6px; color:#94a3b8;">通過順・上がり: <strong>${cornerPace}</strong></div>` : ''}
+            <div style="margin-top:12px; padding:10px; background:rgba(30,41,59,0.5); border-radius:8px; font-size:12px; color:var(--text-muted); text-align:center;">
+                ※ 地方・海外競馬または障害競走のため、JRA公式ラップタイムおよび全頭着順・払戻金データは提供外となります。
+            </div>
+        </div>`;
+    }
+}
+
+/**
  * 回顧フォームの入力フィールド定義
  */
 const EVAL_FIELDS = [
@@ -970,6 +1219,8 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
     const prStr = (horse && horse.past_races && horse.past_races[tabIndex]) ? horse.past_races[tabIndex] : '';
     const pciData = getPastRacePciData(nbId, prStr);
     renderPastRaceRpcibar(pciData, nbId, prStr);
+    // ページ下部に過去走のレース情報（基本情報・ラップ推移・全着順・払戻金）を描画
+    renderPastRaceDetailInReview(nbId, horse ? horse.horse_name : '', prStr);
 
     const paceBadge = pciData ? getPaceBadgeHtml(pciData.pace_category, pciData.pace_f3f_l3f, pciData.pci_diff) : getPaceBadgeForRace(nbId, prStr);
     const hasValidRpci = pciData && pciData.rpci !== null && pciData.rpci !== undefined && !isNaN(Number(pciData.rpci)) && String(pciData.rpci) !== 'undefined';
@@ -983,7 +1234,8 @@ async function selectPastRace(tabIndex, nbId, updateTabs = true) {
         if (mBan) mBanStr = `${mBan[1]}番`;
     }
 
-    const metaParts = [mBanStr, rpciShort, paceBadge].filter(Boolean);
+    const kaisaiShort = formatKaisai(nbId);
+    const metaParts = [kaisaiShort, mBanStr, rpciShort, paceBadge].filter(Boolean);
     metaEl.innerHTML = metaParts.join(' ');
 
     if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }

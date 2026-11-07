@@ -1,5 +1,5 @@
 // Service Worker for RaceReviewPWA
-const CACHE_NAME = 'race-review-pwa-v20261021';
+const CACHE_NAME = 'race-review-pwa-v20261108_0530';
 
 // Service Worker 内で IndexedDB (localforage) を直接利用可能にする
 try {
@@ -13,7 +13,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-    event.waitUntil(clients.claim());
+    event.waitUntil(
+        caches.keys().then((keys) => {
+            return Promise.all(
+                keys.filter((key) => key !== CACHE_NAME && key !== 'video-blobs-v1').map((key) => {
+                    console.log('[SW] Deleting old cache:', key);
+                    return caches.delete(key);
+                })
+            );
+        }).then(() => clients.claim())
+    );
 });
 
 // ============================================================

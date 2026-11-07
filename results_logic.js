@@ -274,6 +274,32 @@ function onRaceFilterChange(changedId) {
 /**
  * 個別レース一覧の検索・描画
  */
+/**
+ * 開催回数・日数のフォーマット補助関数
+ */
+function getKaisaiString(race) {
+    if (!race) return '';
+    if (race.kaisai) return race.kaisai;
+    if (typeof formatKaisai === 'function') {
+        const res = formatKaisai(race.id, race.venue);
+        if (res) return res;
+    }
+    const raceId = race.id || '';
+    if (raceId.length >= 10) {
+        const coursesMap = {"01":"札幌","02":"函館","03":"福島","04":"新潟","05":"東京","06":"中山","07":"中京","08":"京都","09":"阪神","10":"小倉"};
+        const vCode = raceId.substring(4, 6);
+        const vName = race.venue || coursesMap[vCode] || '';
+        if (coursesMap[vCode] && vName) {
+            const kai = parseInt(raceId.substring(6, 8), 10);
+            const day = parseInt(raceId.substring(8, 10), 10);
+            if (kai > 0 && day > 0) {
+                return `${kai}回${vName}${day}日目`;
+            }
+        }
+    }
+    return '';
+}
+
 function renderRecentRaces() {
     const container = document.getElementById('recent-races-list');
     if (!container) return;
@@ -342,11 +368,13 @@ function renderRecentRaces() {
         const diffStr = r.pci_diff !== null && r.pci_diff !== undefined ? (r.pci_diff > 0 ? '+' + r.pci_diff : String(r.pci_diff)) : '';
         const paceBadge = r.pace_index ? getPaceBadgeHtml(r.pace_index, r.pace_f3f_l3f, diffStr) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(r.id) : '');
         const paceMeta = r.pace_f3f_l3f ? ` (${r.pace_f3f_l3f})` : '';
+const kaisaiLabel = getKaisaiString(r);
+        const venueDisplay = kaisaiLabel ? `${kaisaiLabel} ${r.race_num}R` : `${r.venue} ${r.race_num}R`;
         html += `
         <div class="glass-panel race-result-card" onclick="openRaceDetailModal('${r.id}')">
             <div class="rr-card-header">
                 <span class="rr-date">${r.date || '日付不明'}</span>
-                <span class="rr-venue-badge">${r.venue} ${r.race_num}R</span>
+                <span class="rr-venue-badge">${venueDisplay}</span>
                 <span class="rr-class-badge">${r.class}</span>
             </div>
             <div class="rr-title">${r.name} ${paceBadge}</div>
@@ -379,8 +407,11 @@ function openRaceDetailModal(raceId) {
 
     const diffStr = race.pci_diff !== null && race.pci_diff !== undefined ? (race.pci_diff > 0 ? '+' + race.pci_diff : String(race.pci_diff)) : '';
     const paceBadge = race.pace_index ? getPaceBadgeHtml(race.pace_index, race.pace_f3f_l3f, diffStr) : (typeof getPaceBadgeForRace === 'function' ? getPaceBadgeForRace(race.id) : '');
-    document.getElementById('m-race-title').innerHTML = `${race.venue}${race.race_num}R ${race.name} ${paceBadge}`;
-    document.getElementById('m-race-date-meta').textContent = `${race.date || ''} | ${race.surface}${race.distance}m | 天候:${race.weather} | 馬場:${race.condition} | ${race.horses_count}頭 | クラス:${race.class || 'OP'}`;
+    const cleanWeather = (race.weather || 'Unknown').replace(/&nbsp;|\//g, '').trim() || 'Unknown';
+    const kaisaiModalStr = getKaisaiString(race);
+    const titleKaisaiModal = kaisaiModalStr ? `${kaisaiModalStr} ` : `${race.venue}`;
+    document.getElementById('m-race-title').innerHTML = `${titleKaisaiModal}${race.race_num}R ${race.name} ${paceBadge}`;
+    document.getElementById('m-race-date-meta').textContent = `${race.date || ''}${kaisaiModalStr ? ' (' + kaisaiModalStr + ')' : ''} | ${race.surface}${race.distance}m | 天候:${cleanWeather} | 馬場:${race.condition} | ${race.horses_count}頭 | クラス:${race.class || 'OP'}`;
 
     // ⏱ ラップタイム推移 & レースPCI (RPCI) 展開分析の描画
     const lapsContainer = document.getElementById('m-race-laps-display');
