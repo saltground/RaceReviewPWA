@@ -47,7 +47,7 @@ window.onload = async function () {
 
     // PWA Service Worker 登録（バックグラウンドサポート）
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js?v=20261108_0530').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=20261110_0923').then((reg) => {
             console.log('[PWA] Service Worker registered:', reg.scope);
             reg.update().catch(() => {});
         }).catch((err) => {

@@ -1,5 +1,5 @@
 // Service Worker for RaceReviewPWA
-const CACHE_NAME = 'race-review-pwa-v20261108_0530';
+const CACHE_NAME = 'race-review-pwa-v20261110_0923';
 
 // Service Worker 内で IndexedDB (localforage) を直接利用可能にする
 try {
