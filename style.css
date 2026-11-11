@@ -1554,11 +1554,61 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; tra
 /* 入力ナビゲーションバー */
 .input-focus-toolbar {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 4px;
     padding: 4px 0 6px 0;
     margin-bottom: 6px;
     border-bottom: 1px solid var(--glass-border);
+}
+.ift-video-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    width: 100%;
+}
+.ift-vbtn {
+    flex: 1;
+    padding: 5px 2px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    background: rgba(15, 23, 42, 0.75);
+    color: #e2e8f0;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: all 0.12s ease;
+}
+.ift-vbtn:active {
+    background: rgba(56, 189, 248, 0.25);
+    border-color: #38bdf8;
+    transform: scale(0.97);
+}
+.ift-vbtn.play-btn {
+    flex: 0 0 34px;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.5);
+}
+.ift-vbtn.speed-btn {
+    flex: 0 0 38px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.4);
+}
+.ift-vbtn.speed-btn.is-slow {
+    background: #f59e0b;
+    color: #0f172a;
+    border-color: #f59e0b;
+}
+.ift-nav-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
 }
 .input-focus-title {
     font-size: 13px;

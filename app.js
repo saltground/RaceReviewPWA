@@ -47,7 +47,7 @@ window.onload = async function () {
 
     // PWA Service Worker 登録（バックグラウンドサポート）
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js?v=20261110_0923').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=20261111_1905').then((reg) => {
             console.log('[PWA] Service Worker registered:', reg.scope);
             reg.update().catch(() => {});
         }).catch((err) => {
@@ -1136,6 +1136,105 @@ function blurFocusedField() {
 }
 window.blurFocusedField = blurFocusedField;
 
+
+/**
+ * アクティブな動画要素を取得
+ */
+function getActiveReviewVideo() {
+    const slot = document.getElementById('video-slot');
+    return slot ? slot.querySelector('video') : null;
+}
+
+/**
+ * 現在アクティブな入力欄のフォーカスを再保証
+ */
+function ensureCurrentFieldFocus() {
+    const fieldEl = document.getElementById(currentActiveFieldId);
+    if (fieldEl && document.activeElement !== fieldEl) {
+        try {
+            fieldEl.focus({ preventScroll: true });
+        } catch (_) {
+            fieldEl.focus();
+        }
+    }
+}
+
+/**
+ * 入力欄のアクティブ状態を維持したまま動画を指定秒数シーク
+ * @param {number} deltaSec シーク秒数（負: 巻き戻し, 正: 早送り）
+ * @param {Event} [event] クリック/タッチイベント
+ */
+function seekVideoMaintainFocus(deltaSec, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const video = getActiveReviewVideo();
+    if (!video) return;
+
+    const newTime = Math.max(0, Math.min(video.duration || 9999, video.currentTime + deltaSec));
+    video.currentTime = newTime;
+
+    ensureCurrentFieldFocus();
+}
+window.seekVideoMaintainFocus = seekVideoMaintainFocus;
+
+/**
+ * 入力欄のアクティブ状態を維持したまま再生/一時停止トグル
+ */
+function toggleVideoPlayMaintainFocus(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const video = getActiveReviewVideo();
+    if (!video) return;
+
+    if (video.paused) {
+        video.play().catch(() => {});
+    } else {
+        video.pause();
+    }
+    updatePlayButtonState(video);
+    ensureCurrentFieldFocus();
+}
+window.toggleVideoPlayMaintainFocus = toggleVideoPlayMaintainFocus;
+
+function updatePlayButtonState(video) {
+    const btn = document.getElementById('ift-play-btn');
+    if (!btn || !video) return;
+    btn.textContent = video.paused ? '▶' : '⏸';
+}
+
+/**
+ * 入力欄のアクティブ状態を維持したまま再生速度を切替 (1.0x ⇔ 0.5x)
+ */
+function toggleVideoRateMaintainFocus(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const video = getActiveReviewVideo();
+    if (!video) return;
+
+    const btn = document.getElementById('ift-rate-btn');
+    if (video.playbackRate === 0.5) {
+        video.playbackRate = 1.0;
+        if (btn) {
+            btn.textContent = '0.5x';
+            btn.classList.remove('is-slow');
+        }
+    } else {
+        video.playbackRate = 0.5;
+        if (btn) {
+            btn.textContent = '1.0x';
+            btn.classList.add('is-slow');
+        }
+    }
+    ensureCurrentFieldFocus();
+}
+window.toggleVideoRateMaintainFocus = toggleVideoRateMaintainFocus;
+
 /**
  * スマホ文字入力時の動画常時上部固定 & VisualViewport連動制御
  * 大画面動画（フルサイズ）を維持し、フォーカス中項目のみを表示
@@ -1143,9 +1242,49 @@ window.blurFocusedField = blurFocusedField;
 function setupTypingVideoLock() {
     const viewHorse = document.getElementById('view-horse');
     const formScrollArea = document.querySelector('#view-horse .form-scroll-area');
+    const videoContainer = document.querySelector('#view-horse .video-container');
     if (!viewHorse) return;
 
     let isKeyboardOpen = false;
+    let isInteractingWithVideo = false;
+    let lastSavedSelection = { start: 0, end: 0 };
+
+    // 動画コンテナ直接操作時のフォーカス保護
+    if (videoContainer) {
+        const onVideoInteractStart = () => {
+            if (isKeyboardOpen) {
+                isInteractingWithVideo = true;
+                const activeEl = document.getElementById(currentActiveFieldId);
+                if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+                    lastSavedSelection.start = activeEl.selectionStart || 0;
+                    lastSavedSelection.end = activeEl.selectionEnd || 0;
+                }
+            }
+        };
+        videoContainer.addEventListener('mousedown', onVideoInteractStart);
+        videoContainer.addEventListener('touchstart', onVideoInteractStart, { passive: true });
+
+        const restoreFocusFromVideo = () => {
+            if (isInteractingWithVideo) {
+                isInteractingWithVideo = false;
+                setTimeout(() => {
+                    const activeEl = document.getElementById(currentActiveFieldId);
+                    if (activeEl) {
+                        try {
+                            activeEl.focus({ preventScroll: true });
+                            if (typeof activeEl.setSelectionRange === 'function') {
+                                activeEl.setSelectionRange(lastSavedSelection.start, lastSavedSelection.end);
+                            }
+                        } catch (_) {
+                            activeEl.focus();
+                        }
+                    }
+                }, 50);
+            }
+        };
+        window.addEventListener('mouseup', restoreFocusFromVideo);
+        window.addEventListener('touchend', restoreFocusFromVideo);
+    }
 
     // 1. フォーカス時：即座に is-typing モードを適用 & 該当項目のみアクティブ化
     viewHorse.addEventListener('focusin', (e) => {
@@ -1153,6 +1292,10 @@ function setupTypingVideoLock() {
             isKeyboardOpen = true;
             setActiveReviewField(e.target);
             viewHorse.classList.add('is-typing');
+
+            // 再生ボタンの状態を同期
+            const video = getActiveReviewVideo();
+            if (video) updatePlayButtonState(video);
 
             // ブラウザの強制ウィンドウスクロールを即時リセット
             window.scrollTo(0, 0);
@@ -1163,11 +1306,10 @@ function setupTypingVideoLock() {
         }
     });
 
-    // 2. フォーカス解除時：通常モードへ復帰
+    // 2. フォーカス解除時：通常モードへ復帰（動画操作中および項目移動中は保護）
     viewHorse.addEventListener('focusout', () => {
         setTimeout(() => {
-            // 前へ/次への移動中はフォーカスアウトによるリセットを防止
-            if (isNavigatingField) return;
+            if (isNavigatingField || isInteractingWithVideo) return;
 
             const activeEl = document.activeElement;
             if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA')) {
@@ -1179,6 +1321,44 @@ function setupTypingVideoLock() {
                 if (viewHorse.style.height) viewHorse.style.height = '';
             }
         }, 150);
+    });
+
+    // PC用キーボードショートカット（Windows Chrome非競合: Ctrl + , / Ctrl + . / Ctrl + / / Ctrl + ;）
+    viewHorse.addEventListener('keydown', (e) => {
+        // 日本語IME変換中は誤動作防止のため除外
+        if (e.isComposing || e.keyCode === 229) return;
+
+        if (e.ctrlKey && !e.altKey && !e.metaKey) {
+            const key = e.key;
+            // 巻き戻し: Ctrl + , (Shiftありで-2s、なしで-5s)
+            if (key === ',' || key === '<') {
+                e.preventDefault();
+                e.stopPropagation();
+                seekVideoMaintainFocus(e.shiftKey ? -2 : -5);
+                return;
+            }
+            // 早送り: Ctrl + . (5秒早送り)
+            if (key === '.' || key === '>') {
+                e.preventDefault();
+                e.stopPropagation();
+                seekVideoMaintainFocus(5);
+                return;
+            }
+            // 再生 / 一時停止: Ctrl + /
+            if (key === '/' || key === '?') {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleVideoPlayMaintainFocus();
+                return;
+            }
+            // スロー再生切替: Ctrl + ;
+            if (key === ';' || key === '+') {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleVideoRateMaintainFocus();
+                return;
+            }
+        }
     });
 
     // 3. VisualViewport 連動（iOS Safari / Android キーボード対応）
